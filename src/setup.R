@@ -1,5 +1,5 @@
-source("simulation functions.R")
-MC <- 5
+source("src/simulation functions.R")
+MC <- 500
 n_values <- c(100, 200, 400)
 alpha_base_vals <- c(0.5, 1, 1.5)
 alpha_vals <- pi * alpha_base_vals
