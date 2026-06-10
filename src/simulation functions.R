@@ -6,7 +6,6 @@
 if (!requireNamespace("DirStatsOld", quietly = TRUE)) {
   install.packages("DirStatsOld_0.1.5.tar.gz", repos = NULL, type = "source")
 }
-#source("hammer_plots.R")
 library(DirStatsOld)
 library(MASS)
 library(foreach)
@@ -24,15 +23,7 @@ geodesic_dist <- function(X) {
   ip <- X_norm %*% t(X_norm)
   ip <- pmax(pmin(ip, 1), -1)
   D <- acos(ip) 
-  diag(D) <- 0
-  return(D)
-}
-
-chordal_dist <- function(X) {
-  X_norm <- X / sqrt(rowSums(X^2))
-  # standardize to [0, 1]
-  D <- sqrt(pmax(2 * (1 - X_norm %*% t(X_norm)), 0))    
-  diag(D) <- 0
+  diag(D) <- 0 
   return(D)
 }
 
@@ -45,7 +36,6 @@ build_Sigma <- function(X, alpha, sigma2, d = 2) {
   
   sigma2 * exp(-alpha * n^(1 / d) * D)
 }
-
 
 ##------ Regression functions on S^2 -----------------------------------------
 
@@ -99,16 +89,6 @@ cv_loo <- function(X, Y, h, p) {
   mean(res) 
 }
 
-
-#----------------------------------------------------------------------------
-# Test for CV and CV_fast
-# set.seed(1)
-# X<- unif_sphere(50, d = 2)
-# Y<- X[, 1] + rnorm(50)
-# cv_loo_fast(X, Y, h = 0.5, p = 1)
-# cv_loo(X, Y, h = 0.5, p = 1)
-#----------------------------------------------------------------------------
-
 ##------ Modified  cross-validation -----------------------------------------
 # 2) MCV(H) = sum_i [ Y_i - m_hat_{h,p,-N(i)}(X_i) ]^2
 #  N(i) = { j : theta(X_j, X_i) <= ell }
@@ -160,10 +140,10 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
   eps <- as.numeric(mvrnorm(1, mu = rep(0, n), Sigma = Sigma))
   Y <- m_vals + eps
   
-  ## Compute distances
+  ## Compute standardized distances
   D <- geodesic_dist(X) / pi
   
-  ## ase for a given (h, p) at the data points
+  ##  error for a given  bandwidth and p at the data points
   ase <- function(h, p) {
     yhat <- lpe(eval_pts = X, dir_data = X, lin_data = Y, h = h, p = p)
     mean((yhat - m_vals)^2)
@@ -186,6 +166,7 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
     idx_cv <- which.min(cv_vals)
     out[paste0(tag, "_h_cv")] <- h_grid[idx_cv]
     out[paste0(tag, "_ase_cv")] <- ase_vals[idx_cv]
+    
     ## --- MCV ---
     for (b in seq_along(ell_vals)) {
       ell <- ell_vals[b]
@@ -224,8 +205,8 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
   results <- list()
   
   for (n in n_values) {
-    for (alpha in alpha_vals) {
-      
+    for (alpha_idx in seq_along(alpha_vals)) {
+      alpha <- alpha_vals[alpha_idx]
       
       cat(sprintf("\n--- m%d | n = %d | alpha = %.1f ---\n",
                   m_idx, n, alpha))
@@ -254,7 +235,7 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
                                    }
       })
       
-      key <- paste0("n", n, "_a", alpha)
+      key <- paste0("n", n, "_a", alpha_idx)
       results[[key]] <- list(
         n = n,
         alpha = alpha,
@@ -302,57 +283,6 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
 ################################################################################
 # Print tables
 ################################################################################
-make_table <- function(results, ell_vals) {
-  
-  all_n     <- sort(unique(sapply(results, `[[`, "n")))
-  all_alpha <- sort(unique(sapply(results, `[[`, "alpha")))
-  
-  fmt      <- function(m, s) sprintf("%.4f (%.4f)", m, s)
-  b_labels <- paste0("b", seq_along(ell_vals))   # always "b1","b2","b3","b4"
-  
-  rows <- list()
-  
-  for (alpha in all_alpha) {
-    for (n in all_n) {
-      
-      key <- paste0("n", n, "_a", alpha)
-      r   <- results[[key]]
-      row <- data.frame(
-        alpha   = alpha,
-        n       = n,
-        NW_CV   = fmt(r$mean_ase_nw_cv,   r$sd_ase_nw_cv),
-        LL_CV   = fmt(r$mean_ase_ll_cv,   r$sd_ase_ll_cv),
-        NW_CASE = fmt(r$mean_ase_nw_case, r$sd_ase_nw_case),
-        LL_CASE = fmt(r$mean_ase_ll_case, r$sd_ase_ll_case),
-        stringsAsFactors = FALSE
-      )
-      
-      for (j in seq_along(ell_vals)) {
-        row[[paste0("NW_MCV_b", j)]] <- fmt(
-          r[[paste0("mean_ase_nw_mcv", j)]],
-          r[[paste0("sd_ase_nw_mcv",  j)]]
-        )
-        row[[paste0("LL_MCV_b", j)]] <- fmt(
-          r[[paste0("mean_ase_ll_mcv", j)]],
-          r[[paste0("sd_ase_ll_mcv",  j)]]
-        )
-      }
-      
-      rows <- c(rows, list(row))
-    }
-  }
-  
-  tab <- do.call(rbind, rows)
-  
-  nw_cols <- c("NW_CV", paste0("NW_MCV_", b_labels), "NW_CASE")
-  ll_cols <- c("LL_CV", paste0("LL_MCV_", b_labels), "LL_CASE")
-  tab     <- tab[, c("alpha", "n", nw_cols, ll_cols)]
-  
-  rownames(tab) <- NULL
-  tab
-}
-
-
 
 
 
@@ -400,8 +330,10 @@ make_table <- function(results, ell_vals, print_h = FALSE) {
           r[[paste0("sd_ase_ll_mcv",  j)]]
         )
         if (print_h) {
-          row[[paste0("NW_h_MCV_b", j)]] <- fmt_h(r[[paste0("mean_h_nw_mcv", j)]])
-          row[[paste0("LL_h_MCV_b", j)]] <- fmt_h(r[[paste0("mean_h_ll_mcv", j)]])
+          row[[paste0("NW_h_MCV_b", j)]] <- fmt_h(r[[paste0("mean_h_nw_mcv", 
+                                                            j)]])
+          row[[paste0("LL_h_MCV_b", j)]] <- fmt_h(r[[paste0("mean_h_ll_mcv", 
+                                                            j)]])
         }
       }
       
@@ -411,7 +343,6 @@ make_table <- function(results, ell_vals, print_h = FALSE) {
   
   tab <- do.call(rbind, rows)
   
-  ## Build column selection depending on print_h
   if (print_h) {
     nw_ase_cols <- c("NW_CV",   paste0("NW_MCV_b",   
                                        seq_along(ell_vals)), "NW_CASE")
@@ -424,6 +355,7 @@ make_table <- function(results, ell_vals, print_h = FALSE) {
     col_order   <- c("alpha", "n", nw_ase_cols, nw_h_cols, 
                      ll_ase_cols, ll_h_cols)
   } else {
+    
     nw_cols   <- c("NW_CV", paste0("NW_MCV_", b_labels), "NW_CASE")
     ll_cols   <- c("LL_CV", paste0("LL_MCV_", b_labels), "LL_CASE")
     col_order <- c("alpha", "n", nw_cols, ll_cols)
