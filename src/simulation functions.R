@@ -284,56 +284,52 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
 # Print tables
 ################################################################################
 
-
-
 make_table <- function(results, ell_vals, print_h = FALSE) {
   
   all_n     <- sort(unique(sapply(results, `[[`, "n")))
   all_alpha <- sort(unique(sapply(results, `[[`, "alpha")))
   
-  fmt      <- function(m, s) sprintf("%.4f (%.4f)", m, s)
-  fmt_h    <- function(h) sprintf("%.4f", h)
-  b_labels <- paste0("b", seq_along(ell_vals))
+  fmt   <- function(m, s) sprintf("%.4f (%.4f)", m, s)
+  fmt_h <- function(h)    sprintf("%.4f", h)
   
   rows <- list()
   
-  for (alpha in all_alpha) {
+  for (ai in seq_along(all_alpha)) {
     for (n in all_n) {
       
-      key <- paste0("n", n, "_a", alpha)
+      key <- paste0("n", n, "_a", ai)
       r   <- results[[key]]
       
+      if (is.null(r)) {
+        warning(sprintf("Key '%s' not found — skipping.", key))
+        next
+      }
+      
       row <- data.frame(
-        alpha   = alpha,
+        alpha   = all_alpha[ai],
         n       = n,
         NW_CV   = fmt(r$mean_ase_nw_cv,   r$sd_ase_nw_cv),
-        LL_CV   = fmt(r$mean_ase_ll_cv,   r$sd_ase_ll_cv),
         NW_CASE = fmt(r$mean_ase_nw_case, r$sd_ase_nw_case),
+        LL_CV   = fmt(r$mean_ase_ll_cv,   r$sd_ase_ll_cv),
         LL_CASE = fmt(r$mean_ase_ll_case, r$sd_ase_ll_case),
         stringsAsFactors = FALSE
       )
       
-      if (print_h) {
-        row$NW_h_CV   <- fmt_h(r$mean_h_nw_cv)
-        row$LL_h_CV   <- fmt_h(r$mean_h_ll_cv)
-        row$NW_h_CASE <- fmt_h(r$mean_h_nw_case)
-        row$LL_h_CASE <- fmt_h(r$mean_h_ll_case)
+      for (b in seq_along(ell_vals)) {
+        row[[paste0("NW_MCV_b", b)]] <- fmt(r[[paste0("mean_ase_nw_mcv", b)]],
+                                            r[[paste0("sd_ase_nw_mcv",  b)]])
+        row[[paste0("LL_MCV_b", b)]] <- fmt(r[[paste0("mean_ase_ll_mcv", b)]],
+                                            r[[paste0("sd_ase_ll_mcv",  b)]])
       }
       
-      for (j in seq_along(ell_vals)) {
-        row[[paste0("NW_MCV_b", j)]] <- fmt(
-          r[[paste0("mean_ase_nw_mcv", j)]],
-          r[[paste0("sd_ase_nw_mcv",  j)]]
-        )
-        row[[paste0("LL_MCV_b", j)]] <- fmt(
-          r[[paste0("mean_ase_ll_mcv", j)]],
-          r[[paste0("sd_ase_ll_mcv",  j)]]
-        )
-        if (print_h) {
-          row[[paste0("NW_h_MCV_b", j)]] <- fmt_h(r[[paste0("mean_h_nw_mcv", 
-                                                            j)]])
-          row[[paste0("LL_h_MCV_b", j)]] <- fmt_h(r[[paste0("mean_h_ll_mcv", 
-                                                            j)]])
+      if (print_h) {
+        row$NW_h_CV   <- fmt_h(r$mean_h_nw_cv)
+        row$NW_h_CASE <- fmt_h(r$mean_h_nw_case)
+        row$LL_h_CV   <- fmt_h(r$mean_h_ll_cv)
+        row$LL_h_CASE <- fmt_h(r$mean_h_ll_case)
+        for (b in seq_along(ell_vals)) {
+          row[[paste0("NW_h_MCV_b", b)]] <- fmt_h(r[[paste0("mean_h_nw_mcv", b)]])
+          row[[paste0("LL_h_MCV_b", b)]] <- fmt_h(r[[paste0("mean_h_ll_mcv", b)]])
         }
       }
       
@@ -342,28 +338,18 @@ make_table <- function(results, ell_vals, print_h = FALSE) {
   }
   
   tab <- do.call(rbind, rows)
+  rownames(tab) <- NULL
+  
+  nw_ase <- c("NW_CV", paste0("NW_MCV_b", seq_along(ell_vals)), "NW_CASE")
+  ll_ase <- c("LL_CV", paste0("LL_MCV_b", seq_along(ell_vals)), "LL_CASE")
   
   if (print_h) {
-    nw_ase_cols <- c("NW_CV",   paste0("NW_MCV_b",   
-                                       seq_along(ell_vals)), "NW_CASE")
-    ll_ase_cols <- c("LL_CV",   paste0("LL_MCV_b",   
-                                       seq_along(ell_vals)), "LL_CASE")
-    nw_h_cols   <- c("NW_h_CV", paste0("NW_h_MCV_b", 
-                                       seq_along(ell_vals)), "NW_h_CASE")
-    ll_h_cols   <- c("LL_h_CV", paste0("LL_h_MCV_b", 
-                                       seq_along(ell_vals)), "LL_h_CASE")
-    col_order   <- c("alpha", "n", nw_ase_cols, nw_h_cols, 
-                     ll_ase_cols, ll_h_cols)
+    nw_h <- c("NW_h_CV", paste0("NW_h_MCV_b", seq_along(ell_vals)), "NW_h_CASE")
+    ll_h <- c("LL_h_CV", paste0("LL_h_MCV_b", seq_along(ell_vals)), "LL_h_CASE")
+    col_order <- c("alpha", "n", nw_ase, nw_h, ll_ase, ll_h)
   } else {
-    
-    nw_cols   <- c("NW_CV", paste0("NW_MCV_", b_labels), "NW_CASE")
-    ll_cols   <- c("LL_CV", paste0("LL_MCV_", b_labels), "LL_CASE")
-    col_order <- c("alpha", "n", nw_cols, ll_cols)
+    col_order <- c("alpha", "n", nw_ase, ll_ase)
   }
   
-  tab <- tab[, col_order]
-  rownames(tab) <- NULL
-  tab
+  tab[, col_order]
 }
-
-
