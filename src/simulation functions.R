@@ -183,16 +183,15 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
     
   }
   
-  return(out)
+  return(list(results = out, X = X, Y = Y))
 }
 
 
 ## ------ Simulation over all the MC iterations -------------------------------
-
 run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
                            h_grid, ell_vals, d = 2, cores = 1) {
   
-  ## Register parallel backed
+  ## Register parallel backend
   doFuture::registerDoFuture()
   future::plan(future::multisession(), workers = cores)
   
@@ -208,42 +207,48 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
     for (alpha_idx in seq_along(alpha_vals)) {
       alpha <- alpha_vals[alpha_idx]
       
-      cat(sprintf("\n--- m%d | n = %d | alpha = %.1f ---\n",
+      cat(sprintf("\n--- m%d | n = %d | alpha = %.2f ---\n",
                   m_idx, n, alpha))
       
       progressr::with_progress({
         prog <- progressr::progressor(along = seq_len(MC))
-        mat <- foreach(k = seq_len(MC), .inorder   = TRUE, 
-                       .combine   = "rbind", 
-                       .packages  = c("DirStatsOld", "MASS"),
-                       .export = c("one_rep", "lpe", "cv_loo",
-                                   "mcv_loo", "geodesic_dist",
-                                   "build_Sigma", "unif_sphere", "m_funs",
-                                   "h_grid", "ell_vals", 
-                                   "sigma2", "d")) %dorng% {
-                                     
-                                     # Progress bar
-                                     prog()
-                                     # select the regression function
-                                     m_function <- m_funs[[m_idx]] 
-                                     # Computations
-                                     one_rep(n = n, alpha = alpha, 
-                                             sigma2 = sigma2,
-                                             m_fun = m_function, 
-                                             h_grid = h_grid,
-                                             ell_vals = ell_vals, d = d)
-                                   }
+        
+        # Run MC replications in parallel
+        # Each replication returns list(results = ..., X = ..., Y = ...)
+        reps <- foreach(k = seq_len(MC), .inorder = TRUE,
+                        .packages = c("DirStatsOld", "MASS"),
+                        .export   = c("one_rep", "lpe", "cv_loo",
+                                      "mcv_loo", "geodesic_dist",
+                                      "build_Sigma", "unif_sphere",
+                                      "m_funs", "h_grid", "ell_vals",
+                                      "sigma2", "d")) %dorng% {
+                                        prog()
+                                        one_rep(n = n, alpha = alpha, 
+                                                sigma2 = sigma2,
+                                                m_fun   = m_funs[[m_idx]],
+                                                h_grid  = h_grid,
+                                                ell_vals = ell_vals, d = d)
+                                      }
       })
       
+      # Save results of h and ASE per method into an MC x 24 matrix
+      mat <- do.call(rbind, lapply(reps, `[[`, "results"))
+      
+      # Store the data (X, Y) from each replication as a list of length MC
+      samples <- lapply(reps, function(r) list(X = r$X, Y = r$Y))
+      
+      # Summary for this (n, alpha) scenario
       key <- paste0("n", n, "_a", alpha_idx)
       results[[key]] <- list(
-        n = n,
+        n = n, 
         alpha = alpha,
-        mat = mat,
+        mat = mat,    # MC x 24, saves h and ASE for each replicate
+        samples = samples, # saves the MC samples
         
-        mean_ase_nw_cv = mean(mat[, "nw_ase_cv"]),
+        # Mean bandwidth for each method 
+        mean_ase_nw_cv  = mean(mat[, "nw_ase_cv"]),
         mean_ase_nw_case = mean(mat[, "nw_ase_case"]),
-        mean_ase_ll_cv = mean(mat[, "ll_ase_cv"]),
+        mean_ase_ll_cv  = mean(mat[, "ll_ase_cv"]),
         mean_ase_ll_case = mean(mat[, "ll_ase_case"]),
         
         sd_ase_nw_cv = sd(mat[, "nw_ase_cv"]),
@@ -257,19 +262,19 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
         mean_h_ll_case = mean(mat[, "ll_h_case"])
       )
       
+      # MCV summaries for each neighborhood size
       for (b in seq_along(ell_vals)) {
-        results[[key]][[paste0("mean_ase_nw_mcv", b)]] <- 
+        results[[key]][[paste0("mean_ase_nw_mcv", b)]] <-
           mean(mat[, paste0("nw_ase_mcv", b)])
-        results[[key]][[paste0("sd_ase_nw_mcv", b)]] <- 
-          sd(mat[, paste0("nw_ase_mcv", b)])
-        results[[key]][[paste0("mean_ase_ll_mcv", b)]] <- 
+        results[[key]][[paste0("sd_ase_nw_mcv",   b)]] <-
+          sd(mat[,   paste0("nw_ase_mcv", b)])
+        results[[key]][[paste0("mean_ase_ll_mcv", b)]] <-
           mean(mat[, paste0("ll_ase_mcv", b)])
-        results[[key]][[paste0("sd_ase_ll_mcv", b)]] <- 
-          sd(mat[, paste0("ll_ase_mcv", b)])
-        
-        results[[key]][[paste0("mean_h_nw_mcv", b)]] <- 
+        results[[key]][[paste0("sd_ase_ll_mcv",   b)]] <-
+          sd(mat[,   paste0("ll_ase_mcv", b)])
+        results[[key]][[paste0("mean_h_nw_mcv",   b)]] <-
           mean(mat[, paste0("nw_h_mcv", b)])
-        results[[key]][[paste0("mean_h_ll_mcv", b)]] <- 
+        results[[key]][[paste0("mean_h_ll_mcv",   b)]] <-
           mean(mat[, paste0("ll_h_mcv", b)])
       }
     }
