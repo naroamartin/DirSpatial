@@ -41,9 +41,8 @@ build_Sigma <- function(X, alpha, sigma2, d = 2) {
 
 m_funs <- list(
   m1 = function(X) X[, 1],
-  m2 = function(X) X[, 1]^2 - X[, 3],
-  m3 = function(X) sin(pi * X[, 1]) * X[, 2],
-  m4 = function(X, a = 1, b = 1.5) a * sin(2 * pi * X[, 2]) + b * 
+  m2 = function(X) sin(pi * X[, 1]) * X[, 2],
+  m3 = function(X, a = 1, b = 1.5) a * sin(2 * pi * X[, 2]) + b * 
     cos(2 * pi * X[, 1])
 )
 
@@ -136,9 +135,16 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
   ## Data generation
   X <- unif_sphere(n, d)               # (n x 3) points on S^2
   m_vals <- m_fun(X)                   # true regression values at X
+  
+  ## Standardize m(X) by sd for equal variance across models
+  m_vals <- (m_vals - mean(m_vals)) / sd(m_vals)
+  
+  
   Sigma  <- build_Sigma(X, alpha, sigma2)
   eps <- as.numeric(mvrnorm(1, mu = rep(0, n), Sigma = Sigma))
   Y <- m_vals + eps
+  
+  
   
   ## Compute standardized distances
   D <- geodesic_dist(X) / pi
@@ -236,6 +242,7 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
       
       # Store the data (X, Y) from each replication as a list of length MC
       samples <- lapply(reps, function(r) list(X = r$X, Y = r$Y))
+                                               
       
       # Summary for this (n, alpha) scenario
       key <- paste0("n", n, "_a", alpha_idx)
@@ -294,8 +301,8 @@ make_table <- function(results, ell_vals, print_h = FALSE) {
   all_n     <- sort(unique(sapply(results, `[[`, "n")))
   all_alpha <- sort(unique(sapply(results, `[[`, "alpha")))
   
-  fmt   <- function(m, s) sprintf("%.4f (%.4f)", m, s)
-  fmt_h <- function(h)    sprintf("%.4f", h)
+  fmt   <- function(m, s) sprintf("%.5f (%.5f)", m, s)
+  fmt_h <- function(h)    sprintf("%.5f", h)
   
   rows <- list()
   

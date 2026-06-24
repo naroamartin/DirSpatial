@@ -75,3 +75,9 @@ color_bar <- function(breaks, ticks,
   box(lwd = 4)
   
 }
+
+
+
+
+
+
