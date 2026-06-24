@@ -2,11 +2,11 @@
 # RMSE fields
 ################################################################################
 # RMSE field for a particular sceanrio: using  NW-MCV2 and alpha=0.5
-
+rm(list = ls())
 library(polykde)
 library(viridis)
 library(DirStats)
-source("hammer_plots.R")
+source("hammer functions.R")
 source("simulation functions.R")
 
 ## Grid over S^2
@@ -23,12 +23,12 @@ if (!dir.exists("rmse_fields")) dir.create("rmse_fields")
 
 ## Fixed parameters
 m_idx <- 3  #change this to obtain the plots for each regression function
-method <- "nw_h_mcv2" 
+method <- "nw_h_mcv1" 
 p  <- 0
 alpha_idx <- 1  # fix alpha = 0.5
 
 # Load results
-load(paste0("sim_workspaces_trial/all_results_m", m_idx, ".RData"))
+load(paste0("sim_workspaces/all_results_m", m_idx, ".RData"))
 
 # True function on grid (fixed, same for all n)
 m_true <- m_funs[[m_idx]](s)
@@ -38,10 +38,12 @@ rmse_fields <- list()  # strore minum and maximum values
 rmse_min <- Inf
 rmse_max <- -Inf
 
+set.seed(123, kind = "Mersenne-Twister")
+
 for (n in c(100, 200, 400)) { 
   
   key <- paste0("n", n, "_a", alpha_idx)
-  res <- all_results_m3[[key]]
+  res <- get(paste0("all_results_m", m_idx))[[key]]
   mat <- res$mat
   samples <- res$samples
   MC <- nrow(mat)
@@ -53,11 +55,12 @@ for (n in c(100, 200, 400)) {
     X_j <- samples[[j]]$X
     Y_j <- samples[[j]]$Y
     h_j <- mat[j, method]
-    yhat_j <- lpe(eval_pts = s, dir_data = X_j, lin_data = Y_j, h = h_j, p = p)
+    yhat_j <- as.numeric(lpe(eval_pts = s, dir_data = X_j, lin_data = Y_j, 
+                             h = h_j, p = p))
     sum_sq <- sum_sq + (yhat_j - m_true)^2
   }
   
-  rmse_field <- sqrt(sum_sq / MC)
+  rmse_field <- as.numeric(sqrt(sum_sq / MC))
   rmse_fields[[key]] <- rmse_field
   
   rmse_min <- min(rmse_min, min(rmse_field)) 
@@ -95,5 +98,6 @@ jpeg(sprintf("rmse_fields/m%d_a%d_rmse_colorbar.jpeg", m_idx, alpha_idx),
 color_bar(pal = colorRampPalette(c("white", "deepskyblue1")), 
           breaks = rmse_brks, ticks = rmse_ticks)
 dev.off()
+
 
 
