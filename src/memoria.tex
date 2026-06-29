@@ -65,15 +65,15 @@ hmargin=2.7cm     %3
 \newcommand{\bx}{\mathbf{x}}
 \newcommand{\by}{\mathbf{y}}
 \newcommand{\bY}{\mathbf{Y}}
-\newcommand{\bv}{\textbf{v}}
-\newcommand{\bs}{\textbf{s}}
+\newcommand{\bv}{\mathbf{v}}
+\newcommand{\bs}{\mathbf{s}}
 \newcommand{\bz}{\mathbf{z}}
 \newcommand{\bt}{\mathbf{t}}
 \newcommand{\bw}{\mathbf{w}}
 \newcommand{\be}{\mathbf{e}}
-\newcommand{\ba}{\textbf{a}}
+\newcommand{\ba}{\mathbf{a}}
 \newcommand{\bb}{\boldsymbol{b}}
-\newcommand{\bc}{\textbf{c}}
+\newcommand{\bc}{\mathbf{c}}
 \newcommand{\bu}{\boldsymbol{u}}
 \newcommand{\bzeta}{\boldsymbol{\zeta}}
 \newcommand{\bbeta}{\boldsymbol{\eta}}
@@ -554,7 +554,7 @@ These difficulties are addressed by computing the Euclidean mean in $\mathbb{R}^
     \hat{\bmu}=\frac{\bar{\bx}}{\|\bar{\bx}\|},
 \end{equation}
 provided $\bar{\bx}\neq \mathbf{0}$; if $\bar{\bx}=\mathbf{0}$, no unique direction is determined and the sample mean direction is 
-undefined \citep[see Section~9.2 of][]{Mardia1999}. In addition, $\bar{R}=\|\bar{\bx}\|\in [0,1]$ is known as the mean resultant length, which measures the concentration of the observations around $\hat{\bmu}$, with values close to one indicating strong concentration (low dispersion) and values close to zero indicating high dispersion or no preferred direction. For further details, see \cite{Mardia1999}.
+undefined \citep[see Section~9.2 of][]{Mardia1999}. In addition, $\bar{R}=\|\bar{\bx}\|\in [0,1]$ is known as the mean resultant length, which measures the concentration of the observations around $\hat{\bmu}$, with values close to one indicating strong concentration (low dispersion) and values close to zero indicating high dispersion or no preferred direction. For further details, see \citep{Mardia1999}.
 
 While the mean direction and mean resultant length offer a global summary of directional observations, many statistical procedures require a local description of the geometry of $\Sd$. A key tool for this purpose is the tangent-normal decomposition, which plays a central role in distribution theory and data analysis on  the hypersphere.
 
@@ -774,7 +774,7 @@ In addition, let $\sigmad$ denote the surface measure on $\Sd$, and let
 \omega_d := \sigmad(\mathbb{S}^d)
 = \frac{2\pi^{d+1/2}}{\Gamma\!\left({d+1}/{2}\right)}
 \end{equation}
-be the total surface area of $\Sd$ where $\Gamma$ denotes the gamma function given by $\Gamma(z) = \int_{0}^{\infty} t^{z-1}e^{-t} \,dt$ for $z\in \mathbb{C}$ such that $Re(z) > 0$. Throughout this work, all integrals over $\Sd$ are taken with respect to $\sigmad$. The parametrization induced by the tangent--normal decomposition in \eqref{eq:tangent-normal-basis} yields a convenient change of variables for integration on the sphere given by \citet[Lemma~B.4]{Garcia-Portugues2014}. More precisely, for any function $f$ defined in $\Sd$, and any fixed reference direction $\bmu\in\mathbb{S}^d$,
+be the total surface area of $\Sd$ where $\Gamma$ denotes the gamma function given by $\Gamma(z) = \int_{0}^{\infty} t^{z-1}e^{-t} \,dt$ for $z\in \mathbb{C}$ such that $\operatorname{Re}(z) > 0$. Throughout this work, all integrals over $\Sd$ are taken with respect to $\sigmad$. The parametrization induced by the tangent--normal decomposition in \eqref{eq:tangent-normal-basis} yields a convenient change of variables for integration on the sphere given by \citet[Lemma~B.4]{Garcia-Portugues2014}. More precisely, for any function $f$ defined in $\Sd$, and any fixed reference direction $\bmu\in\mathbb{S}^d$,
 \begin{equation*}
 \label{eq:change-variable-sphere}
 \int_{\mathbb{S}^d} f(\bx)\,\rd\sigmad(\bx)
@@ -926,7 +926,7 @@ In addition, let $\sigmad$ denote the surface measure on $\Sd$, and let
 \omega_d := \sigmad(\mathbb{S}^d)
 = \frac{2\pi^{\frac{d+1}{2}}}{\Gamma\!\left(\frac{d+1}{2}\right)}
 \end{equation}
-be the total surface area of $\Sd$ where $\Gamma$ denotes the gamma function given by $\Gamma(z) = \int_{0}^{\infty} t^{z-1}e^{-t} \,dt$ for $z\in \mathbb{C}$ such that $Re(z) > 0$. The parametrization induced by the tangent--normal decomposition in \eqref{eq:tangent-normal-basis} yields a convenient change of variables for integration on the sphere given by \citet[Lemma~B.4]{Garcia-Portugues2014}. More precisely, for any function $f$ defined in $\Sd$, and any fixed reference direction $\bmu\in\mathbb{S}^d$,
+be the total surface area of $\Sd$ where $\Gamma$ denotes the gamma function given by $\Gamma(z) = \int_{0}^{\infty} t^{z-1}e^{-t} \,dt$ for $z\in \mathbb{C}$ such that $\operatorname{Re}(z) > 0$. The parametrization induced by the tangent--normal decomposition in \eqref{eq:tangent-normal-basis} yields a convenient change of variables for integration on the sphere given by \citet[Lemma~B.4]{Garcia-Portugues2014}. More precisely, for any function $f$ defined in $\Sd$, and any fixed reference direction $\bmu\in\mathbb{S}^d$,
 \begin{equation*}
 \label{eq:change-variable-sphere}
 \int_{\mathbb{S}^d} f(\bx)\,\rd\sigmad(\bx)
@@ -1008,7 +1008,7 @@ This shows that $\kappa$ plays the role of the inverse variance of the correspon
 % 1) UNIFORM DISTRIBUTION
 %------------------------------------------------------------------------------
 \begin{comment}
-The simplest distribution on $\Sd$ is the uniform distribution. A random vector $\mathbf X$ is uniformly distributed on $\Sd$ if it assigns equal probability to regions of equal surface area. Its density with respect to $\sigmad$ is therefore constant and given by \cite{Ley2017a}: 
+The simplest distribution on $\Sd$ is the uniform distribution. A random vector $\mathbf X$ is uniformly distributed on $\Sd$ if it assigns equal probability to regions of equal surface area. Its density with respect to $\sigmad$ is therefore constant and given by \citet{Ley2017a}: 
 \begin{equation}
 \label{eq:sph-uniform}
 f_{\mathbf X}(\bx)=\omega_d^{-1}, \qquad \bx\in\mathbb{S}^d,
@@ -2152,7 +2152,7 @@ local polynomial estimator are presented, their asymptotic properties under spat
 
 \section{Kernel smoothing on the sphere}
 
-Consider a random sample $\{\bX_i\}_{i = 1}^{n}$ drawn from a directional random variable $\bX$ on the $d$-dimensional unit sphere $\Sd$ with an underlying density $f$. To estimate this density at a specific point $\bx \in \mathbb{S}^d$, directional kernel density estimators were introduced by \citet{Haldane1960} and \cite{Bai1988}, each following a different perspective in the treatment of directional data. On the one hand, \citet{Hall1987} propose kernel estimators constructed by projecting Euclidean kernels onto $\mathbb{S}^d$, with distances measured in $\mathbb{R}^{d+1}$. On the other hand, \citet{Bai1988} define the estimator directly on $\mathbb{S}^d$, defining a kernel in terms of the geodesic distance between points on the sphere. Although the two approaches are asymptotically related, the definition of \citet{Bai1988} is considered in this project. Hence, for $x \in \Sd$, the kernel density estimator for $f$ is given by: 
+Consider a random sample $\{\bX_i\}_{i = 1}^{n}$ drawn from a directional random variable $\bX$ on the $d$-dimensional unit sphere $\Sd$ with an underlying density $f$. To estimate this density at a specific point $\bx \in \mathbb{S}^d$, directional kernel density estimators were introduced by \citet{Haldane1960} and \citet{Bai1988}, each following a different perspective in the treatment of directional data. On the one hand, \citet{Hall1987} propose kernel estimators constructed by projecting Euclidean kernels onto $\mathbb{S}^d$, with distances measured in $\mathbb{R}^{d+1}$. On the other hand, \citet{Bai1988} define the estimator directly on $\mathbb{S}^d$, defining a kernel in terms of the geodesic distance between points on the sphere. Although the two approaches are asymptotically related, the definition of \citet{Bai1988} is considered in this project. Hence, for $x \in \Sd$, the kernel density estimator for $f$ is given by: 
 \begin{equation*}
     \hat{f}_h(\bx) = \frac{1}{n} \sum_{i=1}^n L_h(\bx, \bX_i),
 \end{equation*}
@@ -2203,7 +2203,7 @@ Concretely, the estimator considered in this work is based on a Taylor expansion
 
 % The continuity of the second derivatives of $f$ and up to the third derivatives of m, 
 
-Assumption \ref{A1}, together with the compact support of the hypersphere, guarantees that $f$ and $m$ are uniformly bounded. This follows directly from the fact that continuous functions on the compact manifold $\Sd$ are inherently bounded, a property that is preserved by the radial projection. Furthermore, this radial construction implies that $m(c\bx) = m(\bx)$ for any scalar $c > 0$. As a result, the function does not change along the direction defined by $\bx$, meaning its directional derivative evaluated at $\bx$ in the direction of $\bx$ is exactly zero; that is, $\bx^\top \nabla m(\bx) = 0$ (similarly, $\bx^\top \nabla f(\bx) = 0$). This property is essential in the in the derivation of the Taylor expansion of $m$ around the sample points $\bX_i$. 
+Assumption \ref{A1}, together with the compact support of the hypersphere, guarantees that $f$ and $m$ are uniformly bounded. This follows directly from the fact that continuous functions on the compact manifold $\Sd$ are inherently bounded, a property that is preserved by the radial projection. Furthermore, this radial construction implies that $m(c\bx) = m(\bx)$ for any scalar $c > 0$. As a result, the function does not change along the direction defined by $\bx$, meaning its directional derivative evaluated at $\bx$ in the direction of $\bx$ is exactly zero; that is, $\bx^\top \nabla m(\bx) = 0$ (similarly, $\bx^\top \nabla f(\bx) = 0$). This property is essential in the derivation of the Taylor expansion of $m$ around the sample points $\bX_i$. 
 
 Performing a Taylor expansion on the unit sphere requires defining a local coordinate system that characterizes the tangent space at the evaluation point $\bx \in \mathbb{S}^d$. Analogous to the basis $\bB_{\boldsymbol{\mu}}$ defined for the reference direction $\boldsymbol{\mu}$, we now construct a coordinate system around $\bx$. Let $\bB_{\bx} = (\bB_1, \dots, \bB_d)$ be a $(d+1) \times d$ matrix whose columns form an orthonormal basis for the tangent space at $\bx$. By construction, this completes $\bx$ into an orthonormal basis for $\mathbb{R}^{d+1}$, satisfying $\bB_{\bx}^\top \bB_{\bx} = \mathbf{I}_d$ where $\mathbf{I}_d$ is the identity matrix of dimension $d$. Moreover, since $\{\bx, \bB_1, \dots, \bB_d\}$ forms a complete orthonormal basis for $\mathbb{R}^{d+1}$, we can express the identity matrix as $\mathbf{I}_{d+1} = \bx\bx^\top + \bB_{\bx} \bB_{\bx}^\top$. Rearranging this directly yields $\bB_{\bx} \bB_{\bx}^\top = \mathbf{I}_{d+1} - \bx\bx^\top$. Consequently, $\bB_{\bx} \bB_{\bx}^\top$ acts as the orthogonal projection matrix onto the tangent space of $\Sd$ at $\bx$. 
 
@@ -2354,7 +2354,7 @@ Under assumptions \ref{A1}--\ref{A4}, the conditional variance for the projected
 
 \begin{remark}
 Notice that under spatial dependence, the 
-asymptotic conditional variance of the estimator $\hat{m}_{h}(\bx;p)$ in \eqref{eq:estimator-weights}, for $p=0,1$, has a similar structure to that obtained for the Nadaraya--Watson and local linear estimators in the independent case. However, for independent data, it follows that $\rho_{\mathrm{c}}=0$ in Theorem \ref{th:var}, and, consequently, the asymptotic conditional variance of both estimators coincides with the expression obtained for independent data in \cite{Garcia-Portugues2016}.
+asymptotic conditional variance of the estimator $\hat{m}_{h}(\bx;p)$ in \eqref{eq:estimator-weights}, for $p=0,1$, has a similar structure to that obtained for the Nadaraya--Watson and local linear estimators in the independent case. However, for independent data, it follows that $\rho_{\mathrm{c}}=0$ in Theorem \ref{th:var}, and, consequently, the asymptotic conditional variance of both estimators coincides with the expression obtained for independent data in \citet{Garcia-Portugues2016}.
 \end{remark}
 
 
@@ -2598,7 +2598,7 @@ For both estimators, in all the scenarios, the estimation error decreases as the
 
 Regarding bandwidth selection, the MCV criterion significantly outperforms CV across most scenarios. The optimal neighborhood size $\ell$ depends on both the spatial dependence strength and the sample size. Under strong dependence ($\alpha=0.5$), larger neighborhoods such as $\ell=0.2$ or $\ell=0.25$ tend to yield the smallest errors for small sample sizes ($n=100$, $200$), 
 although at $n=400$ the advantage of larger neighborhoods diminishes and $\ell=0.1$ performs better.
-Under moderate dependence ($\alpha=1.0$), intermediate values around $\ell=0.1$ generally perform best across all sample sizes. Lastly, under weak dependence ($\alpha=1.5$), smaller neighborhoods such as $\ell=0.05$ or $\ell=0.1$ are enough, with differences across $\ell$ values becoming negligible as $n$ grows. Notice that, the Nadaraya--Watson and local linear estimators exhibit consistently similar performance across all scenarios. Overall, the neighborhood size $\ell$ should reflect both the strength of spatial dependence and the sample size: larger neighborhoods correct for stronger dependence, while smaller ones are preferable under weak dependence, with the optimal $\ell$ tending to decrease as $n$ grows. In all cases, the benefit of MCV over CV becomes more pronounced as spatial correlation increases.
+Under moderate dependence ($\alpha=1.0$), intermediate values around $\ell=0.1$ generally perform best across all sample sizes. Lastly, under weak dependence ($\alpha=1.5$), smaller neighborhoods such as $\ell=0.05$ or $\ell=0.1$ are enough, with differences across $\ell$ values becoming negligible as $n$ grows. Notice that the Nadaraya--Watson and local linear estimators exhibit consistently similar performance across all scenarios. Overall, the neighborhood size $\ell$ should reflect both the strength of spatial dependence and the sample size: larger neighborhoods correct for stronger dependence, while smaller ones are preferable under weak dependence, with the optimal $\ell$ tending to decrease as $n$ grows. In all cases, the benefit of MCV over CV becomes more pronounced as spatial correlation increases.
 
 
 
@@ -2613,7 +2613,7 @@ Under moderate dependence ($\alpha=1.0$), intermediate values around $\ell=0.1$ 
       \includegraphics[width=0.35\textwidth, height=0.13\textheight, keepaspectratio]{imagenes/boxplots/m1_nw_a\a_n\n.jpeg}
     }
   }
-  \caption{Boxplots of the ASE \eqref{eq:ase} for the Nadaraya--Watson estimator for $m_1$ under each bandwidth selector $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.3}}$, $h_{\mathrm{MCV}_{0.4}}$, and $h_{\mathrm{CASE}}$. Rows correspond to $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right). The $y$-axis is on a $\log(1+\cdot)$ scale.}
+  \caption{Boxplots of the ASE \eqref{eq:ase} for the Nadaraya--Watson estimator for $m_1$ under each bandwidth selector $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{ASE}}$. Rows correspond to $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right). The $y$-axis is on a $\log(1+\cdot)$ scale.}
   \label{fig:boxplots-m1-nw}
 \end{figure}
 
@@ -2627,7 +2627,7 @@ Under moderate dependence ($\alpha=1.0$), intermediate values around $\ell=0.1$ 
       \includegraphics[width=0.35\textwidth, height=0.13\textheight, keepaspectratio]{imagenes/boxplots/m1_ll_a\a_n\n.jpeg}
     }
   }
-  \caption{Boxplots of the ASE \eqref{eq:ase} for the local linear estimator for $m_1$ under each bandwidth selector ($h_{\mathrm{CV}}$), MCV ($h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.3}}$, $h_{\mathrm{MCV}_{0.4}}$). Rows correspond to decreasing spatial dependence strength: $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right). The $y$-axis is on a $\log(1+\cdot)$ scale.}
+  \caption{Boxplots of the ASE \eqref{eq:ase} for the local linear estimator for $m_1$ under each bandwidth selector $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{ASE}}$. Rows correspond to decreasing spatial dependence strength: $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right). The $y$-axis is on a $\log(1+\cdot)$ scale.}
   \label{fig:boxplots-m1-ll}
 \end{figure}
 
@@ -2635,7 +2635,7 @@ Under moderate dependence ($\alpha=1.0$), intermediate values around $\ell=0.1$ 
 
 In the case of $m_2$, Figures~\ref{fig:boxplots-m2-nw} and \ref{fig:boxplots-m2-ll} illustrate the ASE distribution on a $\log(1+\cdot)$ scale. The conclusions observed are similar to those for $m_1$:  estimation error decreases as $n$ increases (left to right) and as spatial dependence weakens (top to bottom), with CV yielding the largest errors in most of the cases. However, errors are generally higher than for $m_1$ across all scenarios, reflecting the more complex oscillatory structure of $m_2$.
 
-As far as the bandwidth selection, the same dependence of the optimal $\ell$ on $\alpha$ and $n$ is observed: stronger dependence favors larger neighborhoods, and this is particularly clear for $n=400$, where $\ell=0.25$ performs best under strong dependence ($\alpha=0.5$) and $\ell=0.05$ under weak dependence ($\alpha=1.5$). Notice that, $h_{\mathrm{MCV}_{0.25}}$ exhibits substantially wider interquartile ranges, especially for small sample sizes, suggesting that excluding too large a neighborhood leads to a loss of too many observations and increased variability. This highlights the importance of balancing the size of the excluded neighborhood against the amount of information retained for estimation. Finally, the Nadaraya--Watson and local linear estimators yield very similar results across all scenarios, with only small discrepancies in the optimal choice of $\ell$.
+As far as the bandwidth selection, the same dependence of the optimal $\ell$ on $\alpha$ and $n$ is observed: stronger dependence favors larger neighborhoods, and this is particularly clear for $n=400$, where $\ell=0.25$ performs best under strong dependence ($\alpha=0.5$) and $\ell=0.05$ under weak dependence ($\alpha=1.5$). Notice that $h_{\mathrm{MCV}_{0.25}}$ exhibits substantially wider interquartile ranges, especially for small sample sizes, suggesting that excluding too large a neighborhood leads to a loss of too many observations and increased variability. This highlights the importance of balancing the size of the excluded neighborhood against the amount of information retained for estimation. Finally, the Nadaraya--Watson and local linear estimators yield very similar results across all scenarios, with only small discrepancies in the optimal choice of $\ell$.
 
 % NW estimator
 \begin{figure}[H]
@@ -2645,7 +2645,7 @@ As far as the bandwidth selection, the same dependence of the optimal $\ell$ on 
       \includegraphics[width=0.35\textwidth, height=0.13\textheight, keepaspectratio]{imagenes/boxplots/m2_nw_a\a_n\n.jpeg}
     }
   }
-  \caption{Boxplots of the ASE \eqref{eq:ase} on a $\log(1+\cdot)$ scale for the Nadaraya--Watson estimator for $m_2$ under each bandwidth selector $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.3}}$, $h_{\mathrm{MCV}_{0.4}}$, and $h_{\mathrm{CASE}}$. Rows correspond to $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right).}
+  \caption{Boxplots of the ASE \eqref{eq:ase} on a $\log(1+\cdot)$ scale for the Nadaraya--Watson estimator for $m_2$ under each bandwidth selector $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{ASE}}$. Rows correspond to $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right).}
   \label{fig:boxplots-m2-nw}
 \end{figure}
 
@@ -2658,7 +2658,7 @@ As far as the bandwidth selection, the same dependence of the optimal $\ell$ on 
       \includegraphics[width=0.35\textwidth, height=0.13\textheight, keepaspectratio]{imagenes/boxplots/m2_ll_a\a_n\n.jpeg}
     }
   }
-  \caption{Boxplots of the ASE~\eqref{eq:ase} for the local linear estimator for $m_2$ under bandwidth selectors $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{CASE}}$, over 500 replications. Rows correspond to $\alpha=0.5$ (top), $1.0$ (middle), and $1.5$ (bottom); columns to $n=100$ (left), $200$ (center), and $400$ (right). The $y$-axis is on a $\log(1+\cdot)$ scale.}
+  \caption{Boxplots of the ASE~\eqref{eq:ase} for the local linear estimator for $m_2$ under bandwidth selectors $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{ASE}}$, over 500 replications. Rows correspond to $\alpha=0.5$ (top), $1.0$ (middle), and $1.5$ (bottom); columns to $n=100$ (left), $200$ (center), and $400$ (right). The $y$-axis is on a $\log(1+\cdot)$ scale.}
   \label{fig:boxplots-m2-ll}
 \end{figure}
 
@@ -2688,7 +2688,7 @@ Overall, the simulation results highlight that the optimal neighborhood size $\e
 %       \includegraphics[width=0.35\textwidth, height=0.13\textheight, keepaspectratio]{imagenes/boxplots/m3_nw_a\a_n\n.jpeg}
 %     }
 %   }
-%   \caption{Boxplots of the ASE \eqref{eq:ase} on a $\log(1+\cdot)$ scale for the Nadaraya--Watson estimator for $m_3$ under $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.3}}$, $h_{\mathrm{MCV}_{0.4}}$, and $h_{\mathrm{CASE}}$. Rows correspond $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right).}
+%   \caption{Boxplots of the ASE \eqref{eq:ase} on a $\log(1+\cdot)$ scale for the Nadaraya--Watson estimator for $m_3$ under $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.3}}$, $h_{\mathrm{MCV}_{0.4}}$, and $h_{\mathrm{ASE}}$. Rows correspond $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right).}
 %   \label{fig:boxplots-m3-nw}
 % \end{figure}
 
@@ -2701,7 +2701,7 @@ Overall, the simulation results highlight that the optimal neighborhood size $\e
 %       \includegraphics[width=0.35\textwidth, height=0.13\textheight, keepaspectratio]{imagenes/boxplots/m3_ll_a\a_n\n.jpeg}
 %     }
 %   }
-%   \caption{Boxplots of the ASE \eqref{eq:ase} on a $\log(1+\cdot)$ scale for the local linear estimator for $m_3$ under $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.3}}$, $h_{\mathrm{MCV}_{0.4}}$, and $h_{\mathrm{CASE}}$. Rows correspond $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right)}
+%   \caption{Boxplots of the ASE \eqref{eq:ase} on a $\log(1+\cdot)$ scale for the local linear estimator for $m_3$ under $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.3}}$, $h_{\mathrm{MCV}_{0.4}}$, and $h_{\mathrm{ASE}}$. Rows correspond $\alpha = 0.5$ (top), $\alpha = 1.0$ (middle), and $\alpha = 1.5$ (bottom). Columns correspond to sample sizes $n = 100$ (left), $n = 200$ (center), and $n = 400$ (right)}
 %   \label{fig:boxplots-m3-ll}
 % \end{figure}
 
@@ -2712,7 +2712,7 @@ Overall, the simulation results highlight that the optimal neighborhood size $\e
       \includegraphics[width=0.35\textwidth, height=0.13\textheight, keepaspectratio]{imagenes/boxplots/m3_nw_a\a_n\n.jpeg}
     }
   }
-  \caption{Boxplots of the ASE~\eqref{eq:ase} on a $\log(1+\cdot)$ scale for the Nadaraya--Watson estimator for $m_3$ under $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{CASE}}$. Rows correspond to $\alpha=0.5$ (top), $1.0$ (middle), and $1.5$ (bottom); columns to $n=100$ (left), $200$ (center), and $400$ (right).}
+  \caption{Boxplots of the ASE~\eqref{eq:ase} on a $\log(1+\cdot)$ scale for the Nadaraya--Watson estimator for $m_3$ under $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{ASE}}$. Rows correspond to $\alpha=0.5$ (top), $1.0$ (middle), and $1.5$ (bottom); columns to $n=100$ (left), $200$ (center), and $400$ (right).}
   \label{fig:boxplots-m3-nw}
 \end{figure}
 \begin{figure}[H]
@@ -2722,16 +2722,16 @@ Overall, the simulation results highlight that the optimal neighborhood size $\e
       \includegraphics[width=0.35\textwidth, height=0.13\textheight, keepaspectratio]{imagenes/boxplots/m3_ll_a\a_n\n.jpeg}
     }
   }
-  \caption{Boxplots of the ASE~\eqref{eq:ase} on a $\log(1+\cdot)$ scale for the local linear estimator for $m_3$ under $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{CASE}}$. Rows correspond to $\alpha=0.5$ (top), $1.0$ (middle), and $1.5$ (bottom); columns to $n=100$ (left), $200$ (center), and $400$ (right).}
+  \caption{Boxplots of the ASE~\eqref{eq:ase} on a $\log(1+\cdot)$ scale for the local linear estimator for $m_3$ under $h_{\mathrm{CV}}$, $h_{\mathrm{MCV}_{0.01}}$, $h_{\mathrm{MCV}_{0.05}}$, $h_{\mathrm{MCV}_{0.1}}$, $h_{\mathrm{MCV}_{0.2}}$, $h_{\mathrm{MCV}_{0.25}}$, and $h_{\mathrm{ASE}}$. Rows correspond to $\alpha=0.5$ (top), $1.0$ (middle), and $1.5$ (bottom); columns to $n=100$ (left), $200$ (center), and $400$ (right).}
   \label{fig:boxplots-m3-ll}
 \end{figure}
 
 %$\{(\bX_1^{(j)}, Y_1^{(j)}),\dots, (\bX_n^{(j)}, Y_n^{(j)}) \}$
 To complement the numerical results reported in the tables, additional graphical outputs are provided. Specifically, for a fixed  $\alpha = 0.5$, the Root Mean Squared Error (RMSE) is computed over an evaluation grid on $\mathbb{S}^2$. For each grid point $\bx \in \mathbb{S}^2$, the RMSE is defined as 
-\begin{equation*}
+\begin{equation}
 \label{eq:rmse}
 \mathrm{RMSE}(\bx) = \left( \frac{1}{M} \sum_{j=1}^{M} \left( \hat{m}_{h_j}^{(j)}(\bx; p) - m(\bx) \right)^2 \right)^{1/2},
-\end{equation*}
+\end{equation}
 where $m(\bx)$ is the true regression function evaluated at $\bx$ and $\hat{m}_{h_j}^{(j)}(\bx; p)$ denotes the estimator fitted on the $j$-th Monte Carlo replicate $\{(\bX_i^{(j)}, Y_i^{(j)})\}_{i=1}^{n}$. Given the small differences between the two estimator types, only the Nadaraya--Watson estimator is considered here. The bandwidth $h_j$ is selected using the MCV criterion with $\ell = 0.1$, which showed the 
 best overall performance across regression functions. The resulting RMSE fields are visualized through the Hammer equal-area projection in Figure~\ref{fig:rmse}, where each row corresponds to one of the regression functions and each column to a sample size $n\in\{100, 200, 400\}$. A common white--blue color scale is used across all panels, with white indicating the minimum and blue the maximum observed RMSE value. As $n$ increases, the RMSE decreases across all scenarios, reflected in progressively lighter shading. Moreover, the color scales reveal the increasing complexity 
 of the regression functions: the error range is 
@@ -2895,7 +2895,7 @@ To illustrate the practical relevance of the proposed methodology, two real data
 Let $\{(\bX_i, Y_i)\}_{i=1}^n$ be the observed sample, where $\bX_i \in \mathbb{S}^2$ is the position of the $i$-th observation on the sphere and $Y_i \in \mathbb{R}$ is the associated scalar response. The goal is to estimate the regression function
 $m : \mathbb{S}^2 \to \mathbb{R}$ in model~\eqref{eq:reg-linear-spherical} using the projected local estimator $\hat{m}_{h}(\bx;p)$ defined in~\eqref{eq:estimator-weights}, with the von Mises--Fisher kernel (derived from the von Mises--Fisher distribution with density given in~\eqref{eq:vonMisesFisher}) and bandwidth $h > 0$. Since the simulation study of Chapter \ref{ch:simulation} showed no great difference in performance between $p = 0$ and $p = 1$, only the Nadaraya--Watson estimator $\hat{m}_{h}(\bx;0)$ is considered here.
 
-To carry out bandwidth selection, the sample is randomly split into atraining set, comprising $90\%$ of the observations, denoted
+To carry out bandwidth selection, the sample is randomly split into a training set, comprising $90\%$ of the observations, denoted
 $\{(\bX_i^{\mathrm{train}}, Y_i^{\mathrm{train}})\}_{i=1}^{n_{\mathrm{train}}}$
 with $n_{\mathrm{train}} = \lfloor 0.9n \rceil$, where $\lfloor \cdot \rceil$ denotes the nearest integer function, and a test set with the remaining $10\%$, denoted $\{(\bX_i^{\mathrm{test}}, Y_i^{\mathrm{test}})\}_{i=1}^{n_{\mathrm{test}}}$ with $n_{\mathrm{test}} = n - n_{\mathrm{train}}$. The bandwidth is then
 selected over a fixed grid by minimizing either the CV criterion
@@ -2909,7 +2909,7 @@ selected over a fixed grid by minimizing either the CV criterion
 \end{equation}
 where $\hat{m}_{\hat{h}}(\,\cdot\,;0)$ is the Nadaraya--Watson estimator computed using the training sample and evaluated at the test points $\bX_i^{\mathrm{test}}$, $i = 1, \ldots, n_{\mathrm{test}}$, and $\hat{h}$ is either $\hat{h}_{\mathrm{CV}}$ or $\hat{h}_{\mathrm{MCV}_\ell}$. In the case of the MCV criterion, several values of the radius $\ell$ are
 considered. Based on the findings of the simulation study in
-Chapter~\ref{ch:simulation}, excluding too many observations from the neighbourhood may discard relevant information and lead to worse estimation performance, so $\ell$ is choosen over the grid $\{0.01, 0.03, \ldots, 0.19\}$ with step $0.02$. For each value of $\ell$, the corresponding $\hat{h}_{\mathrm{MCV}_\ell}$ is computed with the training data and its prediction error
+Chapter~\ref{ch:simulation}, excluding too many observations from the neighbourhood may discard relevant information and lead to worse estimation performance, so $\ell$ is chosen over the grid $\{0.01, 0.03, \ldots, 0.19\}$ with step $0.02$. For each value of $\ell$, the corresponding $\hat{h}_{\mathrm{MCV}_\ell}$ is computed with the training data and its prediction error
 \eqref{eq:pe-rd} is evaluated on the test set. 
 
 Once the estimation is carried out, the presence of spatial dependence in the errors is assessed. To this end, the estimator $\hat{m}_{\hat{h}}(\,\cdot\,;0)$ is fitted on the full dataset using $\hat{h}_{\mathrm{CV}}$, yielding residuals
@@ -3012,7 +3012,7 @@ bandwidth selector.
     \label{tab:rhea-dependence}
 \end{table}
 
-Figure~\ref{fig:rhea-pe} displays the prediction error \eqref{eq:pe-rd} on the test set for all bandwidth selectors considered. The smallest prediction error is achieved by $\hat{h}_{\mathrm{MCV}_{0.03}} = 0.22$, which is consistent with the hypothesis that MCV yields better results than CV in the presence of spatial dependence. For $\ell = 0.03$, on average $0.5\%$ of the training observations are excluded from the criterion, leaving $3221$ points for estimation, which indicates that only a very small local neighborhood is removed in each step. In addition, MCV selectors with small values of $\ell$ outperform CV, while larger values of $\ell$ lead to higher prediction errors. This agrees with the conclusions of the simulation study: when the excluded neighborhood is too large, relevant observations are discarded, which becomes particularly important when the spatial dependence is not strong enough to justify such a large exclusion. The surface also exhibits several transitions between warmer and cooler regions, producing a irregular pattern. This roughness might be a consequence of the CV bandwidth selection criterion in the case nearby observations are spatially correlated. To check whether such dependence is exists, spatial independence tests are applied to the residuals of the CV fit. 
+Figure~\ref{fig:rhea-pe} displays the prediction error \eqref{eq:pe-rd} on the test set for all bandwidth selectors considered. The smallest prediction error is achieved by $\hat{h}_{\mathrm{MCV}_{0.03}} = 0.22$, which is consistent with the hypothesis that MCV yields better results than CV in the presence of spatial dependence. For $\ell = 0.03$, on average $0.5\%$ of the training observations are excluded from the criterion, leaving $3221$ points for estimation, which indicates that only a very small local neighborhood is removed in each step. In addition, MCV selectors with small values of $\ell$ outperform CV, while larger values of $\ell$ lead to higher prediction errors. This agrees with the conclusions of the simulation study: when the excluded neighborhood is too large, relevant observations are discarded, which becomes particularly important when the spatial dependence is not strong enough to justify such a large exclusion. The surface also exhibits several transitions between warmer and cooler regions, producing an irregular pattern. This roughness might be a consequence of the CV bandwidth selection criterion in the case nearby observations are spatially correlated. To check whether such dependence exists, spatial independence tests are applied to the residuals of the CV fit. 
 
 \begin{figure}[h]
     \centering
@@ -3021,8 +3021,8 @@ Figure~\ref{fig:rhea-pe} displays the prediction error \eqref{eq:pe-rd} on the t
     \label{fig:rhea-pe}
 \end{figure}
 
-The Nadaraya--Watson estimator is then refitted on the full dataset using $\hat{h}_{\mathrm{best}} = 0.22$, and the resulting surface is displayed in Figure~\ref{fig:rhea-hammer-best} on the same color scale as Figure~\ref{fig:rhea-hammer-cv}. Compared to the CV fit, the MCV surface is much smoother, capturing broader trends rather than local features. wo regions of relatively larger craters (yellow, around $3.0$
-log-km) are visible, one in the left-centre and one on the right edge of the projection, while the rest of the surface shows smaller mean crater sizes (light blue, around $2.8$--$2.9$ log-km). The larger bandwidth reduces the influence of local clusters, suggesting that CV was undersmoothing. This is likely because spatial autocorrelation causes CV to treat correlated observations as independent, leading it to select a bandwidth that is too small. MCV corrects for this by excluding a neighbourhood observations from the criterion.
+The Nadaraya--Watson estimator is then refitted on the full dataset using $\hat{h}_{\mathrm{best}} = 0.22$, and the resulting surface is displayed in Figure~\ref{fig:rhea-hammer-best} on the same color scale as Figure~\ref{fig:rhea-hammer-cv}. Compared to the CV fit, the MCV surface is much smoother, capturing broader trends rather than local features. Two regions of relatively larger craters (yellow, around $3.0$
+log-km) are visible, one in the left-centre and one on the right edge of the projection, while the rest of the surface shows smaller mean crater sizes (light blue, around $2.8$--$2.9$ log-km). The larger bandwidth reduces the influence of local clusters, suggesting that CV was undersmoothing. This is likely because spatial autocorrelation causes CV to treat correlated observations as independent, leading it to select a bandwidth that is too small. MCV corrects for this by excluding a neighbourhood of observations from the criterion.
 
 \begin{figure}[h]
     \centering
@@ -3078,7 +3078,7 @@ use of a regression model on the sphere.
 The Nadaraya--Watson estimator is fitted on the complete dataset using $\hat{h}_{\mathrm{CV}} = 0.14$, and the resulting surface is displayed in Figure~\ref{fig:bv-hammer-cv}. As is typical of kernel smoothing, the fitted surface has a narrower range $[0.20, 0.70]$ than the original $B$--$V$ response, 
 which is contained approximately in$[-0.4, 2.7]$. 
 This happens because the estimator at each point on the sphere is simply a weighted average of the neighborhood observations. Hence, the color scale in Figure~\ref{fig:bv-hammer-cv} is therefore set to $[0.20, 0.70]$ to match the range of the fitted values. 
-The estimated regression function shows a clear pattern in the $B$--$V$ color index across the sphere. The surface is largely dominated by yellow and red tones, with estimated  $B$--$V$ values in the range $0.45$--$0.70$, indicating that cooler stars are spread across  most of the sky. The red region, corresponding to the highest $B$--$V$ values around $0.65$--$0.70$ and occupies a large portion of the right half of the projection. In contrast, two small dark blue regions appears on the left and right edges, with $B$--$V$ values close to $0.20$--$0.25$, representing a localized concentration of hot stars. The roughness of the graph may happend CV bandwidth selection criterion, which tends to undersmooth when nearby residuals are not  independent, and motivates the use of MCV as a correction.
+The estimated regression function shows a clear pattern in the $B$--$V$ color index across the sphere. The surface is largely dominated by yellow and red tones, with estimated  $B$--$V$ values in the range $0.45$--$0.70$, indicating that cooler stars are spread across  most of the sky. The red region, corresponding to the highest $B$--$V$ values around $0.65$--$0.70$, occupies a large portion of the right half of the projection. In contrast, two small dark blue regions appear on the left and right edges, with $B$--$V$ values close to $0.20$--$0.25$, representing a localized concentration of hot stars. The roughness of the graph may be due to the CV bandwidth selection criterion, which tends to undersmooth when nearby residuals are not  independent, and motivates the use of MCV as a correction.
 
 \begin{figure}[h]
     \centering
@@ -3094,7 +3094,7 @@ The estimated regression function shows a clear pattern in the $B$--$V$ color in
 To assess whether spatial dependence remains in the residuals after fitting with $\hat{h}_{\mathrm{CV}}$, Moran's $I$ and Geary's $C$ are computed using 
 $k$-nearest-neighbour weights with $k = 10$ and $B = 999$ permutations. The results are given in Table~\ref{tab:hipparcos-dependence}. Moran's $I = -0.006$ and Geary's $C = 1.004$ are both close to their null values, and neither reaches significance ($p = 0.238$ and $p = 0.416$, respectively). Therefore, there is no strong evidence of spatial autocorrelation in the residuals of the CV fit for the Hipparcos dataset. This result suggests that, in this case, the spatial dependence in the data is mild enough that CV and MCV are expected to perform similarly. 
 
-This result can be also observed in \ref{fig:bv-pe} where CV yields the lowest predition error. 
+This result can be also observed in Figure~\ref{fig:bv-pe} where CV yields the lowest prediction error. 
 
 This is confirmed in Figure~\ref{fig:bv-pe}, which displays the prediction error on the test set for all bandwidth selectors considered. CV achieves the lowest prediction error. The differences across selectors are very small in, since the errors differ by less than $0.001$, which further supports the conclusion that spatial dependence is not strong enough in this dataset to give MCV a clear advantage over CV. Larger neighbourhood values $\ell = 0.25, 0.30$ lead to higher prediction errors, as excluding too many observations from the criterion discards useful information. 
 
@@ -3316,7 +3316,7 @@ $n^{1/d}\varepsilon_n\to\infty$, the last integral converges to zero. Hence Assu
 To prove statement \textit{\ref{lem:sums1}}, we begin by decomposing the sum as follows:\begin{align}
 &\frac{1}{n^2} \sum_{i=1}^n \sum_{j=1}^nL_h\left(\bx, \bX_i\right) L_h\left(\bx, \bX_j\right) \rho\left(1-\bX_i^\top\bX_j\right)\nonumber\\&=\frac{1}{n^2} \sum_{i=1}^n L_h^2\left(\bx, \bX_i\right)+\frac{1}{n^2} \sum_{i=1}^n\sum_{j\neq i} L_h\left(\bx, \bX_i\right)L_h\left(\bx, \bX_j\right)  \rho\left(1-\bX_i^\top\bX_j\right).\label{eq:lemmai}
 \end{align}
-Using statement $vii)$ of Lemma 1 in \cite{Garcia-Portugues2016}, we have that:
+Using statement $vii)$ of Lemma 1 in \citet{Garcia-Portugues2016}, we have that:
 \begin{align}\frac{1}{n^2} \sum_{i=1}^n L_h^2\left(\bx, \bX_i\right) =\frac{\lambda_d\left(L^2\right) \lambda_d(L)^{-2}f(\bx)}{nh^d}+o_p\lrp{\lrp{n h^d}^{-1}}.\label{eq:lemmai1}\end{align}
 
 Now, we evaluate the second term in equation \eqref{eq:lemmai}. Specifically, we will prove that 
@@ -3897,7 +3897,7 @@ since $nh^d \to \infty$ by assumption~\ref{A1}.
 To prove statement \textit{\ref{lem:sums1}}, we begin by decomposing the sum as follows:\begin{align}
 &\frac{1}{n^2} \sum_{i=1}^n \sum_{j=1}^n L_h\left(\bx, \bX_i\right) L_h\left(\bx, \bX_j\right) \rho_n\left(1-\bX_i^\top\bX_j\right)\nonumber\\&=\frac{1}{n^2} \sum_{i=1}^n L_h^2\left(\bx, \bX_i\right)+\frac{1}{n^2} \sum_{i=1}^n\sum_{j\neq i} L_h\left(\bx, \bX_i\right)L_h\left(\bx, \bX_j\right)  \rho_n\left(1-\bX_i^\top\bX_j\right).\label{eq:lemmai}
 \end{align}
-Using statement $vii)$ of Lemma 1 in \cite{Garcia-Portugues2016}, we have that:
+Using statement $vii)$ of Lemma 1 in \citet{Garcia-Portugues2016}, we have that:
 \begin{align}\frac{1}{n^2} \sum_{i=1}^n L_h^2\left(\bx, \bX_i\right) =\frac{\lambda_d\left(L^2\right) \lambda_d(L)^{-2}f(\bx)}{nh^d}+o_p\lrp{\lrp{n h^d}^{-1}}.\label{eq:lemmai1}\end{align}
 
 Now, we evaluate the second term in equation \eqref{eq:lemmai}. Specifically, we will prove that 
@@ -4268,7 +4268,7 @@ where the last inequality uses $\rho_n^2 \leq |\rho_n|$, which holds since $|\rh
     L^2\!\left(\frac{1 - \bx^\top \by}{h^2}\right)
     \sigmad(\rd\by), \label{eq:var-case3-2}
 \end{align}
-where the last step is given by by Assumption \ref{A4}(i), by first applying the change of variable \eqref{eq:change-var-tg} to the integral involving $\rho_n$ and then the substitution $r = 1 - t$. Then,
+where the last step is given by Assumption \ref{A4}(i), by first applying the change of variable \eqref{eq:change-var-tg} to the integral involving $\rho_n$ and then the substitution $r = 1 - t$. Then,
 \begin{align*}
 \eqref{eq:var-case3-2}&=
   \frac{
@@ -4350,7 +4350,7 @@ L_h\left(\bx, \bX_j\right)\rho_n\left(1-\bX_i^\top\bX_j\right)
 \bB_{\bx}^\top\left(\bX_i -\bx\right).
 \label{eq:lemmaii}
 \end{align}
-Using statement viii) of Lemma 1 in \cite{Garcia-Portugues2016}, we have that:
+Using statement viii) of Lemma 1 in \citet{Garcia-Portugues2016}, we have that:
 \begin{align}
 \frac{1}{n^2} \sum_{i=1}^n L_h^2\left(\bx, \bX_i\right) 
 \bB_{\bx}^\top\left(\bX_i -\bx\right) 
@@ -4594,7 +4594,7 @@ L_h(\bx,\bX_j)
 \bB_{\bx}.
 \label{eq:lemmaiii}
 \end{align}
-Using statement ix) of Lemma 1 in \cite{Garcia-Portugues2016}, we have that:
+Using statement ix) of Lemma 1 in \citet{Garcia-Portugues2016}, we have that:
 \begin{align}
 \frac{1}{n^2} \sum_{i=1}^n L_h^2\left(\bx, \bX_i\right) 
 \bB_{\bx}^\top\left(\bX_i -\bx\right)\left(\bX_i-\bx\right)^\top\bB_{\bx}
@@ -4769,7 +4769,7 @@ L_h\left(\bx, \bX_i\right)L_h\left(\bx, \bX_j\right)
 \begin{align}
 \V{\hat{m}_{h}(\bx;p) \mid \bX_1, \ldots, \bX_n}=\be_1^T\left(\mathcal{X}_{\bx, p}^T \mathcal{W}_{\bx} \mathcal{X}_{\bx, p}\right)^{-1} \mathcal{X}_{\bx, p}^T \mathcal{W}_{\bx} \bSigma \mathcal{W}_{\bx} \mathcal{X}_{\bx, p}\left(\mathcal{X}_{\bx, p}^T \mathcal{W}_{\bx} \mathcal{X}_{\bx, p}\right)^{-1} \be_1,\label{eq:var}
 \end{align}
-where $\bSigma$ is a covariance matrix whose $(i,j)$-entry is $\bSigma(i, j)=\sigma^2 \rho(1- \bX_i^\top\bX_j)$ $i,j=1,\dots,n.$. On the one hand, it follows from the proof of Theorem 1 in \cite{Garcia-Portugues2016} that
+where $\bSigma$ is a covariance matrix whose $(i,j)$-entry is $\bSigma(i, j)=\sigma^2 \rho(1- \bX_i^\top\bX_j)$ $i,j=1,\dots,n.$. On the one hand, it follows from the proof of Theorem 1 in \citet{Garcia-Portugues2016} that
 $$
 \begin{aligned}
 & n^{-1} \mathcal{X}_{\bx, p}^T \mathcal{W}_{\bx} \mathcal{X}_{\bx, p} \\
