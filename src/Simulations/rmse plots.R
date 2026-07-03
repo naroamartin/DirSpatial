@@ -23,7 +23,7 @@ if (!dir.exists("rmse_fields")) dir.create("rmse_fields")
 
 ## Fixed parameters
 m_idx <- 3  #change this to obtain the plots for each regression function
-method <- "nw_h_mcv1" 
+method <- "nw_h_mcv3" 
 p  <- 0
 alpha_idx <- 1  # fix alpha = 0.5
 

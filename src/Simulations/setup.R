@@ -12,16 +12,15 @@ alpha_base_vals <- c(0.5, 1.0, 1.5)
 alpha_vals  <- pi * alpha_base_vals   # internal scaled values
 sigma2 <- 1
 m_idx_vals  <- c(1, 2, 3)
-h_grid   <- seq(0.03, 1.0, length.out = 40)
-ell_vals <- c(0.1, 0.2, 0.3, 0.4)
-
+h_grid  <- seq(0.03, 1.0, length.out = 40)
+ell_vals <- c(0.01, 0.05, 0.1, 0.2, 0.25)
 
 cores <- parallel::detectCores() - 1
 
 output_dir <- "sim_workspaces"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
-save_results <- TRUE
+save_results <- FALSE
 
 
 #----- Expected proportion of observations removed by the MCV neighborhood.---
@@ -85,4 +84,41 @@ final_table <- do.call(rbind, tables)
 rownames(final_table) <- NULL
 print(final_table)
 
+## ------ Obtaining median h_ -----------------------------------------------------
+
+get_ase_summary <- function(results, key, est, ell_vals) {
+  mat <- results[[key]]$mat
+  
+  mcv_ase_cols <- paste0(est, "_ase_mcv", seq_along(ell_vals))
+  ase_cols  <- c(paste0(est, "_ase_cv"), mcv_ase_cols)
+  method_names <- c("CV", paste0("MCV(", ell_vals, ")"))
+  
+  # Median ASE for CV and each MCV (raw scale)
+  med_ase <- sapply(ase_cols, function(col) median(mat[, col], na.rm = TRUE))
+  names(med_ase) <- method_names
+  
+  best_idx <- which.min(med_ase)
+  best_method <- method_names[best_idx]
+  
+  list(
+    median_ase_cv = med_ase["CV"],
+    median_ase_case = median(mat[, paste0(est, "_ase_case")], na.rm = TRUE),
+    best_method = best_method,
+    median_ase_best = med_ase[best_idx]
+  )
+}
+
+m_idx_vals  <- c(3)
+results <- get(paste0("all_results_m", m_idx_vals))
+key <- "n400_a3"
+
+nw_summary <- get_ase_summary(results, key, "nw", ell_vals)
+ll_summary <- get_ase_summary(results, key, "ll", ell_vals)
+
+cat(sprintf("NW: median ASE \n CV = %.5f | CASE = %.5f | best (%s) = %.5f\n",
+            nw_summary$median_ase_cv, nw_summary$median_ase_case,
+            nw_summary$best_method, nw_summary$median_ase_best))
+cat(sprintf("LL: median ASE \n CV = %.5f | CASE (oracle) = %.5f | best (%s) = %.5f\n",
+            ll_summary$median_ase_cv, ll_summary$median_ase_case,
+            ll_summary$best_method, ll_summary$median_ase_best))
 

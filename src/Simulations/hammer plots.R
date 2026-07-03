@@ -75,9 +75,9 @@ geo_dist_to_t <- function(X, t) {
   return(as.numeric(acos(ip)))
 }
 
-t          <- c(0, 0, 1)
+t <- c(0, 0, 1)
 alpha_vals <- c(0.5, 1, 1.5)
-geo        <- geo_dist_to_t(s, t)
+geo <- geo_dist_to_t(s, t)
 
 if (!dir.exists("corr")) dir.create("corr")
 
@@ -93,7 +93,7 @@ for (alpha in alpha_vals) {
        width = 12, height = 6, units = "in", res = 200)
   par(mar = c(0, 0, 0, 0))
   hammer_plot(x = s, cols = cols)
-  points(sph_to_hammer(t), pch = 18, cex = 2.25)
+  points(sph_to_hammer(t), pch = 18, cex = 4)
   dev.off()
 }
 
