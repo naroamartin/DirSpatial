@@ -141,8 +141,7 @@ mgcv <- function(X, Y, h, p, R = NULL, D = NULL, h_pilot = NULL,
 }
 
 # Empirical semivariogram of the pilot residuals on the grid built by
-# dist_est():  gamma-hat(d_j) = 1/(2 n(d_j,t)) * sum_{(i,j) in S(d_j,t)}
-# (eps_i - eps_j)^2.
+# gamma_hat(d_j) = 1/(2 n(d_j,t)) * sum_{(i,j) in S(d_j,t)} (eps_i - eps_j)^2.
 
 empirical_variogram <- function(eps, dist) {
   # eps: Vector of residuals from the pilot fit, length n
@@ -160,44 +159,49 @@ empirical_variogram <- function(eps, dist) {
 }
 
 
+# Construct truncated quantile distance grid and the index sets S(d_j, t)
+# Builds the lag distance grid \eqn{d_1, \dots, d_J} and assigns observation pairs 
+# to distance bins for empirical semivariogram estimation on the unit sphere
 
-
-
-# Builds the distance grid and the index sets S(d_j, t) for the empirical
-# semivariogram. The J lags are interior quantiles of the pairwise geodesic
-# distance sample, and each lag collects the pairs lying within +/- tol of it.
-
-dist_est <- function(X, D = NULL, J = 20, tol = 0.005) {
+dist_est <- function(X, D = NULL, J = 20, tol = 0.005, max_lag_prop = 0.3) {
+  
   # X: Matrix of directional covariates on the unit sphere
   # D: n x n normalized geodesic distance matrix 
   # J: Number of distance bins (lags) in the grid
   # tol: Half-width of the distance bins; capped at half the smallest lag
   # spacing so the bins do not overlap
-  
-  if (is.null(D)) D <- geodesic_dist(X) / pi 
-  
-  ## --- pairwise geodesic distances, i < j ---------------------------------
+  # max_lag_prop : Proportion of shortest pairwaise distances to retain. 
+  # Truncates the distance domain to focus on short lags and prevent binning on
+  # the variogram sill.
+  if (is.null(D)) D <- geodesic_dist(X) / pi
+
   dvec <- D[upper.tri(D)]
   pairs <- which(upper.tri(D), arr.ind = TRUE)
   
+  # Filter out non-finite or zero (self-distance) entries
   keep <- is.finite(dvec) & dvec > 0
   dvec <- dvec[keep]
   pairs <- pairs[keep, , drop = FALSE]
   if (!length(dvec)) stop("No positive pairwise distances.")
+
+  # Truncated quantile grid xonstruction ------------------------------------
+  # Determine max distance threshold capturing the bottom `max_lag_prop` of pairs
+  max_d <- quantile(dvec, probs = max_lag_prop, names = FALSE)
+  short_dvec <- dvec[dvec <= max_d]
   
-  ## --- grid: J interior quantiles of the distance sample ------------------
+  # Generate J interior quantiles uniformly across the truncated short-lag distribution
   probs <- seq_len(J) / (J + 1)
-  d <- as.numeric(quantile(dvec, probs = probs, names = FALSE))
+  d <- as.numeric(quantile(short_dvec, probs = probs, names = FALSE))
   
   ## --- tolerance: cannot exceed half the smallest spacing, or the bins overlap
   tol <- min(tol, min(diff(d)) / 2)
-
+  
   ## --- bin label: which d_j each pair belongs to, NA if none --------------
   bin <- rep(NA_integer_, length(dvec))
   for (j in seq_len(J)){
     bin[dvec >= d[j] - tol & dvec < d[j] + tol] <- j
   }
-  
+
   S_set <- data.frame(i = pairs[, 1], j = pairs[, 2], dist = dvec, bin = bin)
   S_set <- S_set[!is.na(S_set$bin), ]
   
@@ -209,14 +213,16 @@ dist_est <- function(X, D = NULL, J = 20, tol = 0.005) {
 }
 
 
+
 # Estimates the n x n error correlation matrix R required by the MGCV
 # criterion. Residuals from a pilot fit give sigma2 and an empirical
 # semivariogram; the exponential correlation model is then fitted to that
-# semivariogram by nonlinear least squares, and R is rebuilt from the fitted
+# semivariogram by nonlinear least squares (NLS), and R is rebuilt from the fitted
 # range parameter.
 
-correlation_matrix2 <- function(X, Y, h, p, J = 20, tol = 0.005,
-                               D = NULL, min_pairs = 30) {
+correlation_matrix <- function(X, Y, h, p, J = 20, tol = 0.005,
+                               D = NULL, min_pairs = 30, max_lag_prop = 0.3) {
+  
   # X: Matrix of directional covariates on the unit sphere
   # Y: Vector of scalar responses
   # h: Pilot bandwidth used for the fit whose residuals feed the semivariogram
@@ -225,209 +231,165 @@ correlation_matrix2 <- function(X, Y, h, p, J = 20, tol = 0.005,
   # tol: Half-width tolerance for pairing points into distance bins
   # D: n x n normalized geodesic distance matrix (computed from X if NULL)
   # min_pairs: Minimum pair count for a bin to enter the fit
+  # max_lag_prop : Proportion of shortest pairwaise distances to retain. 
+  
   n <- nrow(X)
-  q <- ncol(X) - 1 
+  q <- ncol(X) - 1
   if (is.null(D)) D <- geodesic_dist(X) / pi
-  
+
   ## --- pilot fit and residuals --------------------------------------------
-  yhat <- loc.directional.linear(x = X, data.dir = X, data.lin = Y,
-                                 h = h, p = p)$Yhat
-  eps <- Y - as.numeric(yhat)
-  sigma2 <- mean(eps^2)                               
-  
-  ## --- empirical semivariogram on the quantile grid -----------------------
-  g <- dist_est(X, D = D, J = J, tol = tol)
-  emp_var <- empirical_variogram(eps, g)    
-  
-  # Keep every bin with enough pairs. The least-squares method does not need
-  # gamma < sigma2
+  fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
+  eps <- Y - as.numeric(fit$Yhat)
+
+  # DF correction for variance
+  S <- fit$weights
+  trS <- if(!is.null(dim(S))) sum(diag(S[,,1])) else sum(diag(S))
+  sigma2 <- sum(eps^2) / max(1, (n - trS))
+
+  # Truncated quantile grid and empirical variogram
+  g <- dist_est(X, D = D, J = J, tol = tol, max_lag_prop = max_lag_prop)
+  emp_var <- empirical_variogram(eps, g)
+
+  # Keep finite bins with enough pairs
   ok <- is.finite(emp_var$gamma) & emp_var$n >= min_pairs & emp_var$d > 0
-  if (sum(ok) < 3) stop("Too few usable bins to fit the variogram.")
-  
+  if (sum(ok) < 3) stop("Cannot estimate alpha: too few usable bins.")
+
   d_j <- emp_var$d[ok]
   emp_j <- emp_var$gamma[ok]
-  
-  ## --- alpha calculated by least squares ------------------------------------
-  ## gamma(d) = sigma2 * (1 - exp(-n^(1/q) d / alpha))
-  ## alpha-hat = argmin_a sum_j [ gamma-hat(d_j) - sigma2 (1 - exp(-n^(1/q) d_j / a)) ]^2
-  ## optimised over log(a) so that a > 0 holds automatically
+  counts_j <- emp_var$n[ok]
+
+  # Weighted NLS
+  # gamma(d) = sigma2 * (1 - exp(-n^(1/q) d / alpha))
+  # alpha-hat = argmin_a sum_j [ gamma-hat(d_j) - sigma2 (1 - exp(-n^(1/q) d_j / a)) ]^2
+  # optimized over log(a) so that a > 0 holds automatically
   obj <- function(log_alpha) {
     a <- exp(log_alpha)
-    sum((emp_j - sigma2 * (1 - exp(-n^(1/q) * d_j / a)))^2)
+    sum(counts_j * (emp_j - sigma2 * (1 - exp(-n^(1/q) * d_j / a)))^2)
   }
-  alpha <- exp(optimize(obj, interval = log(c(1e-3, 1e3)))$minimum)
-  
-  ## --- Estimation of R = R(theta-hat) --------------------------------------
+
+  alpha <- exp(optimize(obj, interval = log(c(1e-4, 100)))$minimum)
+
   R <- exp(- D * n^(1/q) / alpha)
-  diag(R) <- 1     
-  
-  
-  # the estimated correlation matrix R, the fitted range alpha, the
-  # residual variance sigma2, the empirical semivariogram, the logical vector of
-  # bins used, and the residual sum of squares of the fit.
-  list(R = R, alpha = alpha, sigma2 = sigma2,
-       variogram = emp_var, used = ok, fit_ss = obj(log(alpha)))
+  diag(R) <- 1
+
+  list(R = R, alpha = alpha, sigma2 = sigma2, variogram = emp_var)
 }
 
 
-correlation_matrix <- function(X, Y, h, p, J = 20, tol = 0.005,
-                               D = NULL, min_pairs = 30) {
-  
-  n <- nrow(X)
-  q <- ncol(X) - 1 
-  if (is.null(D)) D <- geodesic_dist(X) / pi
-  
-  ## --- pilot fit and residuals --------------------------------------------
-  yhat <- loc.directional.linear(x = X, data.dir = X, data.lin = Y,
-                                 h = h, p = p)$Yhat
-  eps <- Y - as.numeric(yhat)
-  sigma2 <- mean(eps^2)                                          
-  
-  ## --- empirical semivariogram on the quantile grid -----------------------
-  g <- dist_est(X, D = D, J = J, tol = tol)
-  emp_var <- empirical_variogram(eps, g)                         # (10)
-  
-  # gamma <- pmin(emp_var$gamma, 0.95 * sigma2)
-  ## --- alpha_j, method of moments -----------------------------------------
-  ## rho(d) = exp(-d/alpha)  =>  alpha_j = d_j / [ln(sigma2) - ln(sigma2 - gamma(d_j))]
-  check <- is.finite(emp_var$gamma) & emp_var$gamma < sigma2 &
-    emp_var$d > 0 & emp_var$n >= min_pairs
-  if (!any(check))
-    stop("Cannot estimate alpha: no bin has gamma-hat below sigma2-hat.")
-  
-  # Invert rho(d) = exp(-d / alpha) -> alpha = d / (ln(sigma2) - ln(sigma2 - gamma))
-  alpha_j <- rep(NA_real_, J)
-  alpha_j[check] <- (emp_var$d[check] * n^(1/q)) / 
-    (log(sigma2) - log(sigma2 - emp_var$gamma[check]))
-  
-  alpha <- mean(alpha_j[check], na.rm = TRUE)
-  
-  ## --- Estimation of R --------
-  R <- exp(- D * n^(1/q) / alpha)
-  diag(R) <- 1     
-  
-  list(R = R, alpha = alpha, alpha_j = alpha_j, sigma2 = sigma2,
-       variogram = emp_var, used = check)
-}
-
-
-
-# 
-# ## UPDATED: Truncated quantile distance grid
-# dist_est <- function(X, D = NULL, J = 20, tol = 0.005, max_lag_prop = 0.3) {
-#   if (is.null(D)) D <- geodesic_dist(X) / pi 
-#   
-#   dvec <- D[upper.tri(D)]
-#   pairs <- which(upper.tri(D), arr.ind = TRUE)
-#   
-#   keep <- is.finite(dvec) & dvec > 0
-#   dvec <- dvec[keep]
-#   pairs <- pairs[keep, , drop = FALSE]
-#   if (!length(dvec)) stop("No positive pairwise distances.")
-#   
-#   # Filter for short lags, then calculate J quantiles
-#   max_d <- quantile(dvec, probs = max_lag_prop, names = FALSE)
-#   short_dvec <- dvec[dvec <= max_d]
-#   
-#   probs <- seq_len(J) / (J + 1)
-#   d <- as.numeric(quantile(short_dvec, probs = probs, names = FALSE))
-#   tol <- min(tol, min(diff(d)) / 2)
-#   
-#   bin <- rep(NA_integer_, length(dvec))
-#   for (j in seq_len(J)){
-#     bin[dvec >= d[j] - tol & dvec < d[j] + tol] <- j
-#   }
-#   
-#   S_set <- data.frame(i = pairs[, 1], j = pairs[, 2], dist = dvec, bin = bin)
-#   S_set <- S_set[!is.na(S_set$bin), ]
-#   
-#   list(d = d, probs = probs, tol = tol, J = J,
-#        S_set = S_set, counts = tabulate(S_set$bin, nbins = J), dvec = dvec)
-# }
-# 
-# # UPDATED: Correlation matrix with weighted NLS
-# correlation_matrix <- function(X, Y, h, p, J = 20, tol = 0.005,
-#                                D = NULL, min_pairs = 30, max_lag_prop = 0.3) {
-#   n <- nrow(X)
-#   q <- ncol(X) - 1 
-#   if (is.null(D)) D <- geodesic_dist(X) / pi
-#   
-#   # Pilot fit
-#   fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
-#   eps <- Y - as.numeric(fit$Yhat)
-#   
-#   # DF correction for variance
-#   S <- fit$weights
-#   trS <- if(!is.null(dim(S))) sum(diag(S[,,1])) else sum(diag(S))
-#   sigma2 <- sum(eps^2) / max(1, (n - trS)) 
-#   
-#   # Truncated quantile grid and empirical variogram
-#   g <- dist_est(X, D = D, J = J, tol = tol, max_lag_prop = max_lag_prop)
-#   emp_var <- empirical_variogram(eps, g)    
-#   
-#   # Keep finite bins with enough pairs
-#   ok <- is.finite(emp_var$gamma) & emp_var$n >= min_pairs & emp_var$d > 0
-#   if (sum(ok) < 3) stop("Cannot estimate alpha: too few usable bins.")
-#   
-#   d_j <- emp_var$d[ok]
-#   emp_j <- emp_var$gamma[ok]
-#   counts_j <- emp_var$n[ok]
-#   
-#   # Weighted NLS
-#   obj <- function(log_alpha) {
-#     a <- exp(log_alpha)
-#     sum(counts_j * (emp_j - sigma2 * (1 - exp(-n^(1/q) * d_j / a)))^2)
-#   }
-#   
-#   alpha <- exp(optimize(obj, interval = log(c(1e-4, 100)))$minimum)
-#   
-#   R <- exp(- D * n^(1/q) / alpha)
-#   diag(R) <- 1    
-#   
-#   list(R = R, alpha = alpha, sigma2 = sigma2, variogram = emp_var)
-# }
 
 #===============================================================================
 # CROSS-VALIDATION APPROACH (for independent data)
 #===============================================================================
-
+library(MASS)
+library(DirStats) 
 
 test <- FALSE
-if (test){
+
+if (test) {
   set.seed(1)
-  n <- 400; 
-  alpha_true <- 1.2; 
+  n <- 400 
+  alpha_true <- 1.2 
   q <- 2
-  X <- unif_sphere(n, q); 
-  D <- geodesic_dist(X)/pi
-  Y <- X[,1] + as.numeric(MASS::mvrnorm(1, rep(0,n), build_Sigma(X, alpha_true, 1)))
   
+  # 1. Data Generation
+  X <- unif_sphere(n, q) 
+  D <- geodesic_dist(X) / pi
+  R_true <- build_Sigma(X, alpha_true, sigma2 = 1)
+  
+  # m(X) = X_1 with spatially correlated errors
+  Y <- X[, 1] + as.numeric(MASS::mvrnorm(1, mu = rep(0, n), Sigma = R_true))
+  
+  ## -------------------------------------------------------------------
   ## TEST 1: CV and CV simplified yield same result
+  ## -------------------------------------------------------------------
   hs <- c(0.2, 0.4, 0.8)
-  cbind(slow = sapply(hs, function(h) cv_loo(X, Y, h, 1)),
-        fast = sapply(hs, function(h) cv(X, Y, h, 1)))
+  res_cv <- cbind(
+    slow = sapply(hs, function(h) cv_loo(X, Y, h, p = 1)),
+    fast = sapply(hs, function(h) cv(X, Y, h, p = 1))
+  )
+  print(res_cv)
   
-  ## TEST 2: MGCV with R = I reproduces gcv
-  cbind(gcv  = sapply(hs, function(h) gcv(X, Y, h, 1)),
-        mgcv = sapply(hs, function(h) mgcv(X, Y, h, 1, R = diag(n))))
+  ## -------------------------------------------------------------------
+  ## TEST 2: MGCV with R = I reproduces standard GCV
+  ## -------------------------------------------------------------------
+  res_gcv <- cbind(
+    gcv  = sapply(hs, function(h) gcv(X, Y, h, p = 1)),
+    mgcv = sapply(hs, function(h) mgcv(X, Y, h, p = 1, R = diag(n)))
+  )
+  print(res_gcv)
   
-  ## 3. alpha-hat recupera alpha  (lo importante)
-  cm <- correlation_matrix(X, Y, h =  bw_dir_rot(X), p = 1, D = D)
-  c(alpha_hat = cm$alpha, alpha_true = alpha_true, sigma2 = cm$sigma2, used = sum(cm$used))
+  ## -------------------------------------------------------------------
+  ## TEST 3: Spatial Parameter Recovery (alpha and sigma2)
+  ## -------------------------------------------------------------------
+  h_pilot <- bw_dir_rot(X)
+  cm <- correlation_matrix(X, Y, h = h_pilot, p = 1, D = D, max_lag_prop = 0.3)
   
-  ## 4. el variograma ajustado sigue a los puntos empíricos
+  res_params <- c(
+    alpha_hat  = cm$alpha, 
+    alpha_true = alpha_true, 
+    sigma2_hat = cm$sigma2,
+    sigma2_true = 1.0
+  )
+  print(round(res_params, 4))
+  
+  ## -------------------------------------------------------------------
+  ## TEST 4: Fitted Variogram vs Empirical Points
+  ## -------------------------------------------------------------------
   ev <- cm$variogram
-  plot(ev$d, ev$gamma, pch = 19, xlab = "d", ylab = expression(hat(gamma)(d)))
-  curve(cm$sigma2 * (1 - exp(-n^(1/q)*x/cm$alpha)), add = TRUE, col = "firebrick", lwd = 2)
-  abline(h = cm$sigma2, lty = 2)
   
-  ## 5. MGCV con R estimada frente a R verdadera y al oráculo
-  R0 <- build_Sigma(X, alpha_true, 1)      # sigma2 = 1, luego esto ES R
-  hg <- seq(0.05, 2, length.out = 40)
-  c(h_Rhat  = hg[which.min(sapply(hg, function(h) mgcv(X, Y, h, 1, R = cm$R)))],
-    h_Rtrue = hg[which.min(sapply(hg, function(h) mgcv(X, Y, h, 1, R = R0)))],
-    h_CV    = hg[which.min(sapply(hg, function(h) cv(X, Y, h, 1)))],
-    h_ASE   = hg[which.min(sapply(hg, function(h)
-      mean((as.numeric(loc.directional.linear(x = X, data.dir = X,
-                                              data.lin = Y, h = h, p = 1)$Yhat) - X[,1])^2)))])
+  # Filter for valid/used bins to prevent plotting NA or empty bins
+  valid_bins <- is.finite(ev$gamma) & ev$n > 0
+  
+  if (sum(valid_bins) > 0) {
+    plot(ev$d[valid_bins], ev$gamma[valid_bins], pch = 19, 
+         xlab = "Normalized Geodesic Distance (d)", 
+         ylab = expression(hat(gamma)(d)),
+         xlim = c(0, max(ev$d[valid_bins], na.rm = TRUE) * 1.05),
+         ylim = c(0, max(cm$sigma2 * 1.2, max(ev$gamma[valid_bins], na.rm = TRUE))))
+    
+    # Superimpose fitted theoretical exponential model
+    curve(cm$sigma2 * (1 - exp(- (n^(1/q)) * x / cm$alpha)), 
+          add = TRUE, col = "firebrick", lwd = 2)
+    
+    # Superimpose estimated sill level (sigma^2)
+    abline(h = cm$sigma2, lty = 2, col = "blue")
+    legend("bottomright", legend = c("Empirical bins", "Fitted model", "Estimated sill"),
+           col = c("black", "firebrick", "blue"), pch = c(19, NA, NA), 
+           lty = c(NA, 1, 2), lwd = c(NA, 2, 1))
+  } else {
+    warning("No valid variogram bins available to plot.")
+  }
+  
+  ## -------------------------------------------------------------------
+  ## TEST 5: MGCV Bandwidth Selection Comparison
+  ## -------------------------------------------------------------------
+  hg <- seq(0.15, 1.5, length.out = 30) 
+  
+  # 1. Optimal h using estimated correlation matrix R_hat
+  mgcv_Rhat_scores <- sapply(hg, function(h) mgcv(X, Y, h, p = 1, R = cm$R))
+  h_Rhat <- hg[which.min(mgcv_Rhat_scores)]
+  
+  # 2. Optimal h using true correlation matrix R_true
+  mgcv_Rtrue_scores <- sapply(hg, function(h) mgcv(X, Y, h, p = 1, R = R_true))
+  h_Rtrue <- hg[which.min(mgcv_Rtrue_scores)]
+  
+  # 3. Standard CV (Ignorant of spatial correlation)
+  cv_scores <- sapply(hg, function(h) cv(X, Y, h, p = 1))
+  h_CV <- hg[which.min(cv_scores)]
+  
+  # ASE (Average Squared Error against true signal X[, 1])
+  ase_scores <- sapply(hg, function(h) {
+    fit_h <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = 1)
+    mean((as.numeric(fit_h$Yhat) - X[, 1])^2)
+  })
+  h_ASE <- hg[which.min(ase_scores)]
+  
+  res_h <- c(
+    h_Rhat  = h_Rhat,  # MGCV with estimated R
+    h_Rtrue = h_Rtrue, # MGCV with true R
+    h_CV    = h_CV,    # Standard CV (typically undersmoothes)
+    h_ASE   = h_ASE    # bandwidth minimizing true risk
+  )
+  print(round(res_h, 4))
+  
 }
