@@ -163,7 +163,7 @@ empirical_variogram <- function(eps, dist) {
 # Builds the lag distance grid \eqn{d_1, \dots, d_J} and assigns observation pairs 
 # to distance bins for empirical semivariogram estimation on the unit sphere
 
-dist_est <- function(X, D = NULL, J = 20, tol = 0.005, max_lag_prop = 0.3) {
+dist_est <- function(X, D = NULL, J = 20, tol = 0.005, max_lag_prop) {
   
   # X: Matrix of directional covariates on the unit sphere
   # D: n x n normalized geodesic distance matrix 
@@ -214,69 +214,160 @@ dist_est <- function(X, D = NULL, J = 20, tol = 0.005, max_lag_prop = 0.3) {
 
 
 
-# Estimates the n x n error correlation matrix R required by the MGCV
-# criterion. Residuals from a pilot fit give sigma2 and an empirical
-# semivariogram; the exponential correlation model is then fitted to that
-# semivariogram by nonlinear least squares (NLS), and R is rebuilt from the fitted
-# range parameter.
+# # Estimates the n x n error correlation matrix R required by the MGCV
+# # criterion. Residuals from a pilot fit give sigma2 and an empirical
+# # semivariogram; the exponential correlation model is then fitted to that
+# # semivariogram by nonlinear least squares (NLS), and R is rebuilt from the fitted
+# # range parameter.
+# 
+# correlation_matrix <- function(X, Y, h, p, J = 20, tol = 0.005,
+#                                D = NULL, min_pairs = 30, max_lag_prop = 0.3) {
+#   
+#   # X: Matrix of directional covariates on the unit sphere
+#   # Y: Vector of scalar responses
+#   # h: Pilot bandwidth used for the fit whose residuals feed the semivariogram
+#   # p: Polynomial degree for the pilot fit (0 = NW, 1 = local linear)
+#   # J: Number of distance bins used for the empirical semivariogram
+#   # tol: Half-width tolerance for pairing points into distance bins
+#   # D: n x n normalized geodesic distance matrix (computed from X if NULL)
+#   # min_pairs: Minimum pair count for a bin to enter the fit
+#   # max_lag_prop : Proportion of shortest pairwaise distances to retain. 
+#   
+#   n <- nrow(X)
+#   q <- ncol(X) - 1
+#   if (is.null(D)) D <- geodesic_dist(X) / pi
+# 
+#   ## --- pilot fit and residuals --------------------------------------------
+#   fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
+#   eps <- Y - as.numeric(fit$Yhat)
+# 
+#   # DF correction for variance
+#   S <- fit$weights
+#   trS <- if(!is.null(dim(S))) sum(diag(S[,,1])) else sum(diag(S))
+#   sigma2 <- sum(eps^2) / max(1, (n - trS))
+# 
+#   # Truncated quantile grid and empirical variogram
+#   g <- dist_est(X, D = D, J = J, tol = tol, max_lag_prop = max_lag_prop)
+#   emp_var <- empirical_variogram(eps, g)
+# 
+#   # Keep finite bins with enough pairs
+#   ok <- is.finite(emp_var$gamma) & emp_var$n >= min_pairs & emp_var$d > 0
+#   if (sum(ok) < 3) stop("Cannot estimate alpha: too few usable bins.")
+# 
+#   d_j <- emp_var$d[ok]
+#   emp_j <- emp_var$gamma[ok]
+#   counts_j <- emp_var$n[ok]
+# 
+#   # Weighted NLS
+#   # gamma(d) = sigma2 * (1 - exp(-n^(1/q) d / alpha))
+#   # alpha-hat = argmin_a sum_j [ gamma-hat(d_j) - sigma2 (1 - exp(-n^(1/q) d_j / a)) ]^2
+#   # optimized over log(a) so that a > 0 holds automatically
+#   obj <- function(log_alpha) {
+#     a <- exp(log_alpha)
+#     sum(counts_j * (emp_j - sigma2 * (1 - exp(-n^(1/q) * d_j / a)))^2)
+#   }
+# 
+#   alpha <- exp(optimize(obj, interval = log(c(1e-4, 100)))$minimum)
+# 
+#   R <- exp(- D * n^(1/q) / alpha)
+#   diag(R) <- 1
+# 
+#   list(R = R, alpha = alpha, sigma2 = sigma2, variogram = emp_var)
+# }
+
+
+
+
+
+
+
+# correlation_matrix <- function(X, Y, h, p, J = 20, tol = 0.005,
+#                                D = NULL, min_pairs = 30, max_lag_prop = "auto") {
+#   
+#   n <- nrow(X)
+#   q <- ncol(X) - 1
+#   if (is.null(D)) D <- geodesic_dist(X) / pi
+#   
+#   # 1. Ajuste piloto y residuos
+#   fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
+#   eps <- Y - as.numeric(fit$Yhat)
+#   
+#   S <- fit$weights
+#   trS <- if (!is.null(dim(S))) sum(diag(S[, , 1])) else sum(diag(S))
+#   sigma2 <- sum(eps^2) / max(1, (n - trS))
+#   
+#   # 2. Selección ADAPTATIVA de max_lag_prop
+#   if (identical(max_lag_prop, "auto")) {
+#     g_init <- dist_est(X, D = D, J = J, tol = tol, max_lag_prop = 0.50)
+#     emp_init <- empirical_variogram(eps, g_init)
+#     
+#     # Cortar donde la semivarianza alcanza el 85% del Sill (sigma2)
+#     sill_cutoff <- 0.85 * sigma2
+#     valid_idx <- which(emp_init$gamma <= sill_cutoff & emp_init$n >= min_pairs & emp_init$d > 0)
+#     
+#     if (length(valid_idx) >= 3) {
+#       d_max_auto <- max(emp_init$d[valid_idx])
+#       max_lag_prop <- mean(g_init$dvec <= d_max_auto)
+#     } else {
+#       max_lag_prop <- min(0.35, max(0.10, 0.35 * (100 / n)^(1 / q)))
+#     }
+#   }
+#   
+#   # 3. Variograma truncado
+#   g <- dist_est(X, D = D, J = J, tol = tol, max_lag_prop = max_lag_prop)
+#   emp_var <- empirical_variogram(eps, g)
+#   
+#   ok <- is.finite(emp_var$gamma) & emp_var$n >= min_pairs & emp_var$d > 0
+#   if (sum(ok) < 3) stop("Cannot estimate alpha: too few usable bins.")
+#   
+#   d_j <- emp_var$d[ok]
+#   emp_j <- emp_var$gamma[ok]
+#   counts_j <- emp_var$n[ok]
+#   
+#   # 4. Ajuste NLS
+#   obj <- function(log_alpha) {
+#     a <- exp(log_alpha)
+#     sum(counts_j * (emp_j - sigma2 * (1 - exp(-n^(1/q) * d_j / a)))^2)
+#   }
+#   
+#   alpha <- exp(optimize(obj, interval = log(c(1e-4, 100)))$minimum)
+#   
+#   R <- exp(- D * n^(1/q) / alpha)
+#   diag(R) <- 1
+#   
+#   list(R = R, alpha = alpha, sigma2 = sigma2, variogram = emp_var)
+# }
+
 
 correlation_matrix <- function(X, Y, h, p, J = 20, tol = 0.005,
-                               D = NULL, min_pairs = 30, max_lag_prop = 0.3) {
-  
-  # X: Matrix of directional covariates on the unit sphere
-  # Y: Vector of scalar responses
-  # h: Pilot bandwidth used for the fit whose residuals feed the semivariogram
-  # p: Polynomial degree for the pilot fit (0 = NW, 1 = local linear)
-  # J: Number of distance bins used for the empirical semivariogram
-  # tol: Half-width tolerance for pairing points into distance bins
-  # D: n x n normalized geodesic distance matrix (computed from X if NULL)
-  # min_pairs: Minimum pair count for a bin to enter the fit
-  # max_lag_prop : Proportion of shortest pairwaise distances to retain. 
-  
-  n <- nrow(X)
-  q <- ncol(X) - 1
+                               D = NULL, min_pairs = 30, smax = 3) {
+  n <- nrow(X); q <- ncol(X) - 1
   if (is.null(D)) D <- geodesic_dist(X) / pi
-
-  ## --- pilot fit and residuals --------------------------------------------
+  
   fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
   eps <- Y - as.numeric(fit$Yhat)
-
-  # DF correction for variance
-  S <- fit$weights
-  trS <- if(!is.null(dim(S))) sum(diag(S[,,1])) else sum(diag(S))
-  sigma2 <- sum(eps^2) / max(1, (n - trS))
-
-  # Truncated quantile grid and empirical variogram
+  S <- fit$weights; if (length(dim(S)) == 3L) S <- S[, , 1L]
+  sigma2 <- sum(eps^2) / max(1, n - sum(diag(S)))
+  
+  # Truncación en lags escalados: n^(1/q) * d <= smax
+  max_lag_prop <- mean(D[upper.tri(D)] <= smax / n^(1/q))
+  
   g <- dist_est(X, D = D, J = J, tol = tol, max_lag_prop = max_lag_prop)
   emp_var <- empirical_variogram(eps, g)
-
-  # Keep finite bins with enough pairs
   ok <- is.finite(emp_var$gamma) & emp_var$n >= min_pairs & emp_var$d > 0
   if (sum(ok) < 3) stop("Cannot estimate alpha: too few usable bins.")
-
-  d_j <- emp_var$d[ok]
-  emp_j <- emp_var$gamma[ok]
-  counts_j <- emp_var$n[ok]
-
-  # Weighted NLS
-  # gamma(d) = sigma2 * (1 - exp(-n^(1/q) d / alpha))
-  # alpha-hat = argmin_a sum_j [ gamma-hat(d_j) - sigma2 (1 - exp(-n^(1/q) d_j / a)) ]^2
-  # optimized over log(a) so that a > 0 holds automatically
-  obj <- function(log_alpha) {
-    a <- exp(log_alpha)
+  
+  d_j <- emp_var$d[ok]; emp_j <- emp_var$gamma[ok]; counts_j <- emp_var$n[ok]
+  obj <- function(la) {
+    a <- exp(la)
     sum(counts_j * (emp_j - sigma2 * (1 - exp(-n^(1/q) * d_j / a)))^2)
   }
-
   alpha <- exp(optimize(obj, interval = log(c(1e-4, 100)))$minimum)
-
-  R <- exp(- D * n^(1/q) / alpha)
-  diag(R) <- 1
-
-  list(R = R, alpha = alpha, sigma2 = sigma2, variogram = emp_var)
+  
+  R <- exp(-D * n^(1/q) / alpha); diag(R) <- 1
+  list(R = R, alpha = alpha, sigma2 = sigma2, variogram = emp_var,
+       max_lag_prop = max_lag_prop)
 }
-
-
-
 #===============================================================================
 # CROSS-VALIDATION APPROACH (for independent data)
 #===============================================================================
