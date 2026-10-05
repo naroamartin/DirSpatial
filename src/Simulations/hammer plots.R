@@ -67,7 +67,7 @@ dev.off()
 ################################################################################
 # Correlation fields
 ################################################################################
-
+ 
 geo_dist_to_t <- function(X, t) {
   X_norm <- X / sqrt(rowSums(X^2))
   t_norm <- t / sqrt(sum(t^2))
@@ -76,14 +76,14 @@ geo_dist_to_t <- function(X, t) {
 }
 
 t <- c(0, 0, 1)
-alpha_vals <- c(0.5, 1, 1.5)
-geo <- geo_dist_to_t(s, t)
+alpha_vals <- c(0.15, 0.3, 0.6)
+geo <- geo_dist_to_t(s, t) / pi
 
 if (!dir.exists("corr")) dir.create("corr")
 
 for (alpha in alpha_vals) {
   
-  cor_field <- exp(-alpha * geo)
+  cor_field <- exp(-geo / alpha)
   
   cols <- col_cuts(cor_field,
                    pal    = colorRampPalette(c("white", "red")),
