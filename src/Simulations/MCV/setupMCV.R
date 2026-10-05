@@ -122,6 +122,7 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
     stop(sprintf(" Sigma is not positive definite for n = %d and alpha = %.3f", n, alpha))
   }
   eps <- as.numeric(mvrnorm(1, mu = rep(0, n), Sigma = Sigma))
+  eps <- eps - mean(eps)
   Y <- m_vals + eps
   
   ##  error for a given  bandwidth and p at the data points
