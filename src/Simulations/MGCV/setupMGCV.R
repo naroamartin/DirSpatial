@@ -227,10 +227,16 @@ variogram.est <- function(X, Y, D = NULL, h_reg = NULL, h_var = NULL, maxlag = N
   # --------------------------------
   error <- Inf
   
+  # Sill of the pseudo-covariances. max(svar$est) (the npsp default) picks up
+  # the noisy estimates at the shortest lags, where there are almost no pairs,
+  # and leaves a spurious constant correlation at every lag. Use instead the
+  # bias-corrected residual variance: E[residuals_i^2] = sill + b_ii.
+  sill <- mean(residuals^2)
+  
   for (iter in 1:max_iter) {
     
     # Covariance matrix estimated from the current nonparametric variogram
-    C_hat <- varcov.directional(svar = svar, D = D, sill = NULL)
+    C_hat <- varcov.directional(svar = svar, D = D, sill = sill)
     
     SC <- S %*% C_hat
     
@@ -242,12 +248,15 @@ variogram.est <- function(X, Y, D = NULL, h_reg = NULL, h_var = NULL, maxlag = N
     b_diag <- diag(B_hat)
     bias_pair <- 0.5 * (b_diag[ii] + b_diag[jj]) - B_hat[cbind(ii, jj)]
     
+    # Bias-corrected sill
+    sill.new <- mean(residuals^2 - b_diag)
+    
     # Empirical residual semivariogram
     gamma.resid <- 0.5 * ( residuals[ii] - residuals[jj])^2
     
     # Bias-corrected pairwise semivariogram
     gamma.corrected <- gamma.resid - bias_pair
-  
+    
     rm(B_hat, b_diag, gamma.resid, bias_pair)
     
     
@@ -269,10 +278,12 @@ variogram.est <- function(X, Y, D = NULL, h_reg = NULL, h_var = NULL, maxlag = N
     #error <- mean((svar$est / svar.new$est - 1)^2, na.rm = TRUE)
     denom <- max(abs(svar$est), na.rm = TRUE)
     
-    error <- sqrt(mean((svar.new$est - svar$est)^2, na.rm = TRUE)) / max(denom, 1e-8)
+    error <- sqrt(mean((svar.new$est - svar$est)^2, na.rm = TRUE)) / max(denom, 1e-8) +
+      abs(sill.new / sill - 1)
     
     # Updates
     svar <- svar.new
+    sill <- sill.new
     h_var <- svar$directional$h
     rm(svar.new, dist.corrected, gamma.corrected)
     
@@ -291,8 +302,8 @@ variogram.est <- function(X, Y, D = NULL, h_reg = NULL, h_var = NULL, maxlag = N
   #        svar = svar,svm = svm, h_reg = h_reg, h_var = h_var, maxlag = maxlag,
   #        nlags = nlags, iter = iter,error = error)
   # )
-  return(list(svm = svm, h_reg = h_reg, h_var = h_var, maxlag = maxlag, iter = iter, 
-              error = error, sill = svm$sill, svar = svar))
+  return(list(svm = svm, h_reg = h_reg, h_var = h_var, maxlag = maxlag, iter = iter,
+              error = error, sill = svm$sill, sill_corr = sill, svar = svar))
   
 }
 
@@ -342,9 +353,7 @@ mgcv <- function(X, Y, h, p, R) {
   denom <- 1 - (1/n) * trSR
   if (!is.finite(denom) || denom <= 0) return(Inf)
   
-  res <- ((Y - Yhat) / denom)^2
-  if (any(!is.finite(res))) return(Inf)
-  mean(res)
+  return(mean(((Y - Yhat) / denom)^2, na.rm = TRUE))
 }
 
 ################################################################################
@@ -379,7 +388,7 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, d = 2,
                                    h = h, p = p)$Yhat
     mean((yhat - m_vals)^2, na.rm = TRUE)
   }
-
+  
   out <- c()  
   # Estimate spatial variogram and Shapiro-Botha model
   vario <- tryCatch({
@@ -389,7 +398,7 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, d = 2,
     if (any(!is.finite(v$R))) stop("R no finita")
     v
   }, error = function(e) NULL)
-
+  
   svm <- NULL
   R <- NULL
   
@@ -414,8 +423,8 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, d = 2,
     
     R_error <- sqrt(mean(( R[lower.tri(R)] - R_true[lower.tri(R)])^2))
     
-    } else {
-      
+  } else {
+    
     R <- NULL
     R_error <- NA_real_
   }
@@ -458,7 +467,7 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, d = 2,
     }
     # Estimated still
     out[paste0(tag, "_sigma2_hat")] <- svm$sill
-
+    
     # Error of estimated correlation matrix
     out[paste0(tag, "_R_error")] <- R_error
     
@@ -480,9 +489,9 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, d = 2,
     
     # MGCV using TRUE R
     mgcv_true_vals <- sapply( h_grid,function(h) 
-      { tryCatch( mgcv( X = X, Y = Y, h = h, p = p, R = R_true),
-          error = function(e) Inf)
-      }
+    { tryCatch( mgcv( X = X, Y = Y, h = h, p = p, R = R_true),
+                error = function(e) Inf)
+    }
     )
     
     if (all(!is.finite(mgcv_true_vals))) {
@@ -528,7 +537,7 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
                                     "m_funs","varcov.svm.directional",
                                     "svariso.from.pairs","varcov.directional", 
                                     "variogram.est","h_grid", "do_gcv", "sigma2",
-                                    "d", "h_pilot", "m_idx")) %dorng% {
+                                    "d", "h_pilot", "m_idx", "mgcv_from_R")) %dorng% {
                                       prog()
                                       one_rep(n = n, alpha = alpha, sigma2 = sigma2,
                                               m_fun   = m_funs[[m_idx]],
