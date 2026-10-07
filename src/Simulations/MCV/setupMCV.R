@@ -151,10 +151,6 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
   #eps <- rnorm(n, 0, sqrt(sigma2)) #Caso independiente
   Y <- m_vals + eps
   
-  ##  Error for a given  bandwidth and p at the data points
-  ase <- function(h, p) {
-   
-  }
   
   ## Bandwidth selection for each estimator (p = 0 NW, p = 1 LL)
   out <- c()
