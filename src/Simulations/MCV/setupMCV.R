@@ -44,81 +44,62 @@ unif_sphere <- function(n, d) {
 # Bandwidth selection
 ################################################################################
 
-##------Cross-Validation (leave-one-out)----------------------------------------
-# 1) CV(h) = sum_i [ Y_i - m_hat_{h,p,-i}(X_i) ]^2
-
-cv <- function(X, Y, h_grid, p, plot = FALSE) {
-  
-  cv_error <- sapply(h_grid, function(h){ 
-    fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, 
-                                  h = h, p = p)
-    S <- fit$weights
-    if (length(dim(S)) == 3L) S <- S[, , 1L]
-    
-    denom <- 1 - diag(S)
-    if (any(denom <= 1e-5)) return(Inf)
-         
-    res <- ((Y - as.numeric(fit$Yhat)) / denom)^2
-    if (any(!is.finite(res))) return(Inf)
-    mean(res)
-  })
-  
-  # Bandwidth minimizing CV
-  idx <- which.min(cv_error)
-  h <- h_grid[idx]
-  cv_min <- cv_error[idx]
-  
-  if (plot) {
-    plot(h_grid, cv_error, type = "b", pch = 19, xlab = "Bandwidth h",
-      ylab = "CV(h)")
-    points(h,cv_min,pch = 19,cex = 1.5)
-    abline(v = h,lty = 2)
-  }
-  return(list(h = h, cv_min = cv_min))
-}
-
 ##------ Modified  cross-validation -----------------------------------------
-# 2) MCV(h) = sum_i [ Y_i - m_hat_{h,p,-N(i)}(X_i) ]^2
-#  N(i) = { j : theta(X_j, X_i) <= ell }
-#  For S^2 (sphere), N(i) is a spherical cap of geodesic radius ell around X_i.
+# MCV(h) = (1/n) sum_i [ Y_i - m_hat_{h,p,-N(i)}(X_i) ]^2
+#  N(i) = { j : theta(X_j, X_i) / pi <= ell }
+#  For S^2 (sphere), N(i) is a spherical cap of geodesic radius pi * ell around
+#  X_i (ell is on the standardized scale [0, 1]; ell = 0.5 is a hemisphere).
+#  loc.directional.linear accepts a vector of bandwidths, so each leave-out fit
+#  is computed once for the whole h_grid.
 
 mcv <- function(X, Y, h_grid, p, ell, D = NULL, plot = FALSE) {
   n <- nrow(X)
   if (is.null(D)) D <- geodesic_dist(X) / pi # (n x n) geodesic distances
-  res <- numeric(n)
-  
-  mcv_error <- sapply(h_grid, function(h){ 
-    for (i in seq_len(n)) {
-      in_nbhd <- which(D[i, ] <= ell)
-      idx_train <- setdiff(seq_len(n), in_nbhd)
-      
-      # Skip if too few points remain after removing N(i) to fit a 
-      # degree-p polynomial
-      if (length(idx_train) < p * (ncol(X) - 1) + 1) {
-        res[i] <- NA_real_
-        next
-      }
-      
-      yhat_i <- loc.directional.linear(x = X[i, , drop = FALSE], 
-                                       data.dir = X[idx_train, , drop = FALSE],
-                                       data.lin = Y[idx_train], h = h, p = p)$Yhat
-      res[i] <- (Y[i] - yhat_i)^2
-    }
-    if (any(!is.finite(res))) return(Inf)
-    mean(res)
-  })
-  # Bandwidth minimizing CV
+  min_train <- p * (ncol(X) - 1) + 1
+  res <- matrix(NA_real_, nrow = n, ncol = length(h_grid))
+
+  for (i in seq_len(n)) {
+    # N(i) always contains i itself (D[i, i] = 0)
+    idx_train <- which(D[i, ] > ell)
+
+    # Skip if too few points remain after removing N(i) to fit a
+    # degree-p polynomial
+    if (length(idx_train) < min_train) next
+
+    yhat_i <- loc.directional.linear(x = X[i, , drop = FALSE],
+                                     data.dir = X[idx_train, , drop = FALSE],
+                                     data.lin = Y[idx_train], h = h_grid,
+                                     p = p)$Yhat
+    res[i, ] <- (Y[i] - drop(yhat_i))^2
+  }
+  mcv_error <- colMeans(res)
+  mcv_error[!is.finite(mcv_error)] <- Inf
+
+  # No valid bandwidth in the grid: return NA instead of h_grid[1]
+  if (all(!is.finite(mcv_error))) return(list(h = NA_real_, mcv_min = NA_real_))
+
+  # Bandwidth minimizing MCV
   idx <- which.min(mcv_error)
   h <- h_grid[idx]
   mcv_min <- mcv_error[idx]
-  
+
   if (plot) {
     plot(h_grid, mcv_error, type = "b", pch = 19, xlab = "Bandwidth h",
-         ylab = "CV(h)")
+         ylab = "MCV(h)")
     points(h, mcv_min,pch = 19,cex = 1.5)
     abline(v = h,lty = 2)
   }
   return(list(h = h, mcv_min = mcv_min))
+}
+
+##------Cross-Validation (leave-one-out)----------------------------------------
+# CV(h) = (1/n) sum_i [ Y_i - m_hat_{h,p,-i}(X_i) ]^2
+# Computed as MCV with ell = 0 (exact leave-one-out). The hat-matrix shortcut
+# (Y_i - Yhat_i) / (1 - S_ii) breaks down for small h, where S_ii rounds to 1.
+
+cv <- function(X, Y, h_grid, p, D = NULL, plot = FALSE) {
+  out <- mcv(X, Y, h_grid, p, ell = 0, D = D, plot = plot)
+  return(list(h = out$h, cv_min = out$mcv_min))
 }
 
 
@@ -159,36 +140,27 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
     tag <- if (p == 0) "nw" else "ll"
     
     
-    ## --- ASE : minimize true ase over the grid ---
-    ase_vals <- sapply(h_grid, function(h) {
-      mhat <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, 
-                                     h = h, p = p)$Yhat
-      mean((mhat - m_vals)^2)
-    })
-    
+    ## --- ASE : true ase over the whole grid (one fit for all h) ---
+    mhat <- loc.directional.linear(x = X, data.dir = X, data.lin = Y,
+                                   h = h_grid, p = p)$Yhat
+    ase_vals <- colMeans((mhat - m_vals)^2)
+    ase_vals[!is.finite(ase_vals)] <- Inf
+
     idx_ase <- if (all(!is.finite(ase_vals))) {NA} else {which.min(ase_vals)}
-    
+
     out[paste0(tag, "_h_ase")] <- h_grid[idx_ase]
     out[paste0(tag, "_mse_ase")] <- ase_vals[idx_ase]
-    
-    ## --- CV ---
-    h_cv <- cv(X, Y, h_grid, p)$h
-    mhat_cv <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, 
-                                   h = h_cv, p = p)$Yhat
-    mse_cv <- mean((mhat_cv - m_vals)^2)
+
+    ## --- CV --- (ASE of the selected h read from ase_vals; NA if CV failed)
+    h_cv <- cv(X, Y, h_grid, p, D = D)$h
     out[paste0(tag, "_h_cv")] <- h_cv
-    out[paste0(tag, "_mse_cv")] <- mse_cv
-    
+    out[paste0(tag, "_mse_cv")] <- ase_vals[match(h_cv, h_grid)]
+
     ## --- MCV ---
     for (b in seq_along(ell_vals)) {
-      ell <- ell_vals[b]
-      h_mcv <- mcv(X, Y, h_grid, p, ell, D = D)$h
-      
-      mhat_mcv <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, 
-                                        h = h_mcv, p = p)$Yhat
-      mse_mcv <- mean((mhat_mcv - m_vals)^2)
+      h_mcv <- mcv(X, Y, h_grid, p, ell_vals[b], D = D)$h
       out[paste0(tag, "_h_mcv", b)] <- h_mcv
-      out[paste0(tag, "_mse_mcv", b)] <- mse_mcv
+      out[paste0(tag, "_mse_mcv", b)] <- ase_vals[match(h_mcv, h_grid)]
     }
     
   }
@@ -247,59 +219,62 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
       # Summary for this (n, alpha) scenario
       key <- paste0("n", n, "_a", alpha_idx)
       results[[key]] <- list(n = n, alpha = alpha, mat = mat, samples = samples,
-                              # Mean bandwidth for each method 
-                              mean_mse_nw_cv = mean(mat[, "nw_mse_cv"]),
-                              mean_mse_nw_ase = mean(mat[, "nw_mse_ase"]),
-                              mean_mse_ll_cv  = mean(mat[, "ll_mse_cv"]),
-                              mean_mse_ll_ase = mean(mat[, "ll_mse_ase"]),
+                              # Replications where a selector failed (NA h)
+                              n_na = colSums(is.na(mat[, grep("_h_", colnames(mat)),
+                                                       drop = FALSE])),
+                              # Mean bandwidth for each method
+                              mean_mse_nw_cv = mean(mat[, "nw_mse_cv"], na.rm = TRUE),
+                              mean_mse_nw_ase = mean(mat[, "nw_mse_ase"], na.rm = TRUE),
+                              mean_mse_ll_cv  = mean(mat[, "ll_mse_cv"], na.rm = TRUE),
+                              mean_mse_ll_ase = mean(mat[, "ll_mse_ase"], na.rm = TRUE),
                               
-                              median_mse_nw_cv  = median(mat[, "nw_mse_cv"]),
-                              median_mse_nw_ase = median(mat[, "nw_mse_ase"]),
-                              median_mse_ll_cv  = median(mat[, "ll_mse_cv"]),
-                              median_mse_ll_ase = median(mat[, "ll_mse_ase"]),
+                              median_mse_nw_cv  = median(mat[, "nw_mse_cv"], na.rm = TRUE),
+                              median_mse_nw_ase = median(mat[, "nw_mse_ase"], na.rm = TRUE),
+                              median_mse_ll_cv  = median(mat[, "ll_mse_cv"], na.rm = TRUE),
+                              median_mse_ll_ase = median(mat[, "ll_mse_ase"], na.rm = TRUE),
                               
-                              sd_mse_nw_cv = sd(mat[, "nw_mse_cv"]),
-                              sd_mse_nw_ase = sd(mat[, "nw_mse_ase"]),
-                              sd_mse_ll_cv = sd(mat[, "ll_mse_cv"]),
-                              sd_mse_ll_ase = sd(mat[, "ll_mse_ase"]),
+                              sd_mse_nw_cv = sd(mat[, "nw_mse_cv"], na.rm = TRUE),
+                              sd_mse_nw_ase = sd(mat[, "nw_mse_ase"], na.rm = TRUE),
+                              sd_mse_ll_cv = sd(mat[, "ll_mse_cv"], na.rm = TRUE),
+                              sd_mse_ll_ase = sd(mat[, "ll_mse_ase"], na.rm = TRUE),
                               
-                              mean_h_nw_cv = mean(mat[, "nw_h_cv"]),
-                              mean_h_nw_ase = mean(mat[, "nw_h_ase"]),
-                              mean_h_ll_cv = mean(mat[, "ll_h_cv"]),
-                              mean_h_ll_ase = mean(mat[, "ll_h_ase"]),
+                              mean_h_nw_cv = mean(mat[, "nw_h_cv"], na.rm = TRUE),
+                              mean_h_nw_ase = mean(mat[, "nw_h_ase"], na.rm = TRUE),
+                              mean_h_ll_cv = mean(mat[, "ll_h_cv"], na.rm = TRUE),
+                              mean_h_ll_ase = mean(mat[, "ll_h_ase"], na.rm = TRUE),
                               
-                              median_h_nw_cv = median(mat[, "nw_h_cv"]),
-                              median_h_nw_ase = median(mat[, "nw_h_ase"]),
-                              median_h_ll_cv = median(mat[, "ll_h_cv"]),
-                              median_h_ll_ase = median(mat[, "ll_h_ase"]) 
+                              median_h_nw_cv = median(mat[, "nw_h_cv"], na.rm = TRUE),
+                              median_h_nw_ase = median(mat[, "nw_h_ase"], na.rm = TRUE),
+                              median_h_ll_cv = median(mat[, "ll_h_cv"], na.rm = TRUE),
+                              median_h_ll_ase = median(mat[, "ll_h_ase"], na.rm = TRUE) 
                               )
       
       # MCV summaries for each neighborhood size
       for (b in seq_along(ell_vals)) {
         results[[key]][[paste0("mean_mse_nw_mcv", b)]] <-
-          mean(mat[, paste0("nw_mse_mcv", b)])
+          mean(mat[, paste0("nw_mse_mcv", b)], na.rm = TRUE)
         results[[key]][[paste0("mean_mse_ll_mcv", b)]] <-
-          mean(mat[, paste0("ll_mse_mcv", b)])
+          mean(mat[, paste0("ll_mse_mcv", b)], na.rm = TRUE)
         
         results[[key]][[paste0("median_mse_nw_mcv", b)]] <-
-          median(mat[, paste0("nw_mse_mcv", b)])
+          median(mat[, paste0("nw_mse_mcv", b)], na.rm = TRUE)
         results[[key]][[paste0("median_mse_ll_mcv", b)]] <-
-          median(mat[, paste0("ll_mse_mcv", b)])
+          median(mat[, paste0("ll_mse_mcv", b)], na.rm = TRUE)
         
         results[[key]][[paste0("sd_mse_nw_mcv", b)]] <-
-          sd(mat[, paste0("nw_mse_mcv", b)])
+          sd(mat[, paste0("nw_mse_mcv", b)], na.rm = TRUE)
         results[[key]][[paste0("sd_mse_ll_mcv", b)]] <-
-          sd(mat[, paste0("ll_mse_mcv", b)])
+          sd(mat[, paste0("ll_mse_mcv", b)], na.rm = TRUE)
         
         results[[key]][[paste0("mean_h_nw_mcv", b)]] <-
-          mean(mat[, paste0("nw_h_mcv", b)])
+          mean(mat[, paste0("nw_h_mcv", b)], na.rm = TRUE)
         results[[key]][[paste0("mean_h_ll_mcv", b)]] <-
-          mean(mat[, paste0("ll_h_mcv", b)])
+          mean(mat[, paste0("ll_h_mcv", b)], na.rm = TRUE)
         
         results[[key]][[paste0("median_h_nw_mcv", b)]] <-
-          median(mat[, paste0("nw_h_mcv", b)])
+          median(mat[, paste0("nw_h_mcv", b)], na.rm = TRUE)
         results[[key]][[paste0("median_h_ll_mcv", b)]] <-
-          median(mat[, paste0("ll_h_mcv", b)])
+          median(mat[, paste0("ll_h_mcv", b)], na.rm = TRUE)
       }
     }
   }

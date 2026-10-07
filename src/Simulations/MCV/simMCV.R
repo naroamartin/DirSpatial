@@ -2,7 +2,7 @@
 # Simulation
 ################################################################################
 rm(list = ls())
-source("setup.R")
+source("setupMCV.R")
 
 ## ------ Simulation parameters -----------------------------------------------
 MC <- 2
@@ -15,7 +15,7 @@ sigma2 <- 1
 m_idx_vals <- c(1)
 
 h_grid <- seq(0.03, 1.0, length.out = 40)
-ell_vals <- c(0.01, 0.05, 0.1, 0.2, 0.25)
+ell_vals <- c(0.1, 0.2, 0.3, 0.4, 0.5)   # standardized scale; 0.5 = hemisphere
 
 cores <- parallel::detectCores() - 1
 
@@ -33,7 +33,7 @@ for (m_idx in m_idx_vals) {
                             sigma2 = sigma2, m_idx = m_idx, h_grid = h_grid,
                             ell_vals = ell_vals, d = d, cores = cores)
   obj_name <- paste0("all_results_m", m_idx)
-  assign(obj_name, res)
+  assign(obj_name, results)
   
   if (save_results) {
     fname <- file.path(output_dir, sprintf("all_results_m%d.RData", m_idx))
