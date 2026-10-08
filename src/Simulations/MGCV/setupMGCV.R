@@ -1,17 +1,12 @@
 ################################################################################
 # Simulation study: Linear-spherical regression under spatial dependence
-# Bandwidth selection: standard CV, GCV, vs. Non-Parametric MGCV (npsp)
 ################################################################################
-rm(list = ls())
-
+rm(list=ls())
 if (!requireNamespace("DirStatsOld", quietly = TRUE)) {
   install.packages("DirStatsOld_0.1.5.tar.gz", repos = NULL, type = "source")
 }
-
 library(DirStatsOld)
-library(DirStats)
 library(MASS)
-library(npsp)
 library(foreach)
 library(progressr)
 library(future)
@@ -19,10 +14,7 @@ library(doRNG)
 library(doFuture)
 
 ################################################################################
-# Initial functions
-################################################################################
-
-##------ Spherical distances -------------------------------------------------
+##------ Spherical distances & Covariance ------------------------------------
 geodesic_dist <- function(X) {
   X_norm <- X / sqrt(rowSums(X^2))
   ip <- X_norm %*% t(X_norm)
@@ -31,485 +23,308 @@ geodesic_dist <- function(X) {
   diag(D) <- 0 
   return(D)
 }
-##------ Regression functions on S^2 -----------------------------------------
+
 m_funs <- list(
   m1 = function(X) X[, 1],
   m2 = function(X) sin(pi * X[, 1]) * X[, 2],
   m3 = function(X, a = 1, b = 1.5) a * sin(2 * pi * X[, 2]) + b * cos(2 * pi * X[, 1])
 )
 
-##------ Uniform sample on S^d -----------------------------------------------
 unif_sphere <- function(n, d) {
   X <- matrix(rnorm(n * (d + 1)), nrow = n, ncol = d + 1)
   return(X / sqrt(rowSums(X^2)))
 }
 
-
 ################################################################################
-##------ Cross-Validation & MGCV Criteria ------------------------------------
+# Estimators & Cross-Validation
 ################################################################################
-cv_loo <- function(X, Y, h, p) {
-  fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
-  S <- fit$weights
-  if (length(dim(S)) == 3L) S <- S[, , 1L]
-  Yhat <- as.numeric(fit$Yhat)
+cv <- function(X, Y, h_grid, p, plot = FALSE) {
   
-  denom <- 1 - diag(S)
-  if (any(denom <= 1e-5)) return(Inf)
-  if (any(!is.finite(denom))) return(Inf)
-  mean(((Y - Yhat) / denom)^2)
-}
-
-gcv <- function(X, Y, h, p) {
-  n <- nrow(X)
-  fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
-  S <- fit$weights
-  if (length(dim(S)) == 3L) S <- S[, , 1L]
-  Yhat <- as.numeric(fit$Yhat)
+  cv_error <- sapply(h_grid, function(h){ 
+    fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, 
+                                  h = h, p = p)
+    S <- fit$weights
+    if (length(dim(S)) == 3L) S <- S[, , 1L]
+    
+    denom <- 1 - diag(S)
+    if (any(denom <= 1e-5)) return(Inf)
+    
+    res <- ((Y - as.numeric(fit$Yhat)) / denom)^2
+    if (any(!is.finite(res))) return(Inf)
+    mean(res)
+  })
   
-  denom <- 1 - sum(diag(S)) / n
-  if (!is.finite(denom) || denom <= 0) return(Inf)
+  # Bandwidth minimizing CV (NA if CV is not finite for any h)
+  if (all(!is.finite(cv_error))) return(list(h = NA_real_, cv_min = NA_real_))
+  idx <- which.min(cv_error)
+  h <- h_grid[idx]
+  cv_min <- cv_error[idx]
   
-  mean(((Y - Yhat) / denom)^2)
-}
-
-################################################################################ 
-# Isotropic variogram estimation from pairwise distances 
-################################################################################
-svariso.from.pairs <- function(dist, gamma, maxlag = NULL, nlags = 101,
-                               h = NULL, degree = 1,
-                               hat.bin = TRUE) {
-  
-  dist <- as.numeric(dist)
-  gamma <- as.numeric(gamma)
-  
-  correct <- is.finite(dist) & is.finite(gamma)
-  dist <- dist[correct]
-  gamma <- gamma[correct]
-  
-  if (length(dist) == 0L){
-    stop("No valid pairs available for variogram estimation")
+  if (plot) {
+    plot(h_grid, cv_error, type = "b", pch = 19, xlab = "Bandwidth h",
+         ylab = "CV(h)")
+    points(h,cv_min,pch = 19,cex = 1.5)
+    abline(v = h,lty = 2)
   }
-  
-  # If maxlag is not supplied, use 55% of the maximum pairwise distance
-  if (is.null(maxlag))  maxlag <- 0.55 * max(dist, na.rm = TRUE)
-  if (!is.numeric(maxlag) ||  length(maxlag) != 1L || !is.finite(maxlag) ||
-      maxlag <= 0) {
-    stop("'maxlag' must be a positive finite number")
-  } 
-  
-  # Keep only pairs below maximum lag 
-  ok <- dist <= maxlag
-  dist <- dist[ok]
-  gamma <- gamma[ok]
-  
-  if (length(dist) < 10L) warning("Too few pairs available below 'maxlag'")
-  
-  # Linear binning with npsp
-  bin <- npsp::binning(x = dist, y = gamma, nbin = nlags,type = "linear",
-                       set.NA = TRUE)
-  
-  # Make it a svar.bin object
-  bin$svar <- list( type = "isotropic", estimator = "classical")
-  class(bin) <- c("svar.bin", class(bin))
-  
-  h.cv.result <- NULL
-  h.cv.value <- NA_real_
-  
-  #Bandwidth selection
-  if (is.null(h)) {
-    # Automatic bandwidth selection by MRSE
-    h.cv.result <- npsp::h.cv(bin, loss = "MRSE", degree = degree, ncv = 1)
-    # Selected bandwidth 
-    h <- as.numeric(h.cv.result$h)
-    # MRSE criterion at the selected bandwidth
-    h.cv.value <- h.cv.result$value
-  }
-  if (!is.numeric(h) || length(h) != 1L || !is.finite(h) || h <= 0) { 
-    stop("'h' must be a positive finite number") }
-  
-  # Local linear smoothing with npsp
-  svar <- npsp::locpol(bin, h = h, degree = degree,  drv = FALSE,
-                       hat.bin = hat.bin, ncv = 0)
-  
-  if (is.null(svar$est) || !any(is.finite(svar$est))) { 
-    stop("The estimated variogram contains no finite values") }
-  
-  svar$directional <- list(maxlag = maxlag,nlags = nlags,
-                           npairs = length(dist), 
-                           h = h, h.cv.value = h.cv.value, h.cv = h.cv.result)
-  
-  return(svar)
+  return(list(h = h, cv_min = cv_min))
 }
 
-################################################################################
-# Covariance matrix from the directional variogram with the geodesic distance
-################################################################################
-varcov.directional <- function(svar, D, sill = NULL) {
-  
-  if (is.null(sill)) sill <- max(svar$est, na.rm = TRUE)
-  if (!is.finite(sill) || sill <= 0) stop("'sill' must be positive and finite")
-  n <- nrow(D)
-  dists <- D[lower.tri(D)]
-  covs <- numeric(length(dists))              # 0 más allá de maxlag (taper)
-  idx <- dists <= svar$grid$max
-  covs[idx] <- npsp::covar(svar, dists[idx], sill = sill)
-  C <- matrix(0, n, n)
-  C[lower.tri(C)] <- covs
-  C <- C + t(C)
-  diag(C) <- sill
-  C
-}
-
-################################################################################
-# Complete directional variogram estimation
-################################################################################
-variogram.est <- function(X, Y, D = NULL, h_reg = NULL, h_var = NULL, maxlag = NULL, 
-                          max_iter = 15, nlags = 101, tol = 0.05){
-  
-  stopifnot(!missing(X), !missing(Y))
+mgcv <- function(X, Y, h_grid, p, R = NULL, D = NULL, h_pilot = NULL,
+                 J = 20, min_pairs = 5, plot = FALSE) {
   n <- nrow(X)
-  if (length(Y) != n) stop("'X' and 'Y' have incompatible dimensions")
+  if (is.null(R)) {
+    if (is.null(D)) D <- geodesic_dist(X) / pi
+    if (is.null(h_pilot)) stop("Supply h_pilot for MGCV.")
+    R <- correlation_matrix(X, Y, h = h_pilot, p = p, J = J,
+                            D = D, min_pairs = min_pairs)$R
+  }
+  mgcv_error <- sapply(h_grid, function(h){ 
+    fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, 
+                                  h = h, p = p)
+    S <- fit$weights
+    if (length(dim(S)) == 3L) S <- S[, , 1L]
+    
+    trSR  <- sum(S * t(R))
+    denom <- 1 - (1/n) * trSR
+    if (!is.finite(denom) || denom <= 0) return(Inf)
+    
+    res <- ((Y - as.numeric(fit$Yhat)) / denom)^2
+    if (any(!is.finite(res))) return(Inf)
+    mean(res)
+  })
+  # Bandwidth minimizing MGCV (NA if MGCV is not finite for any h)
+  if (all(!is.finite(mgcv_error))) return(list(h = NA_real_, mgcv_min = NA_real_))
+  idx <- which.min(mgcv_error)
+  h <- h_grid[idx]
+  mgcv_min <- mgcv_error[idx]
   
+  if (plot) {
+    plot(h_grid, mgcv_error, type = "b", pch = 19, xlab = "Bandwidth h",
+         ylab = "MGCV(h)")
+    points(h, mgcv_min, pch = 19,cex = 1.5)
+    abline(v = h,lty = 2)
+  }
+  return(list(h = h, mgcv_min = mgcv_min))
+}
+
+################################################################################
+# Distance Binning & Variogram Estimation
+################################################################################
+# Classifies pairwise geodesic distances into J logarithmically spaced bins
+dist_est <- function(X, D = NULL, J = 20, plot = FALSE) {
+  n <- nrow(X)
   if (is.null(D)) D <- geodesic_dist(X) / pi
-  if (is.null(maxlag)) maxlag <- 0.55 * max(D)
   
-  # Initial bandwidth assuming independence
-  if(is.null(h_reg)){
-    h_reg <- DirStatsOld::bw.pi.loc(data.dir = X, data.lin = Y, p = 1)$h.opt
+  dvec <- D[upper.tri(D)]
+  pairs <- which(upper.tri(D), arr.ind = TRUE)
+  
+  keep <- is.finite(dvec) & dvec > 0
+  dvec <- dvec[keep]
+  pairs <- pairs[keep, , drop = FALSE]
+  if (!length(dvec)) stop("No positive pairwise distances.")
+  
+  # Define the range of distances used for binning
+  d_min <- max(quantile(dvec, 0.005, names = FALSE), 0.005)
+  d_max <- quantile(dvec, 0.95, names = FALSE)
+  
+  # Define logarithmically spaced reference distances
+  d <- exp(seq(log(d_min), log(d_max), length.out = J))
+  
+  # Differences between consecutive reference distances.
+  diffs <- diff(d)
+  # half-width of each bin
+  tol <- c(diffs / 2, diffs[length(diffs)] / 2)
+  
+  # Assign each pairwise distance to a bin
+  bin <- rep(NA_integer_, length(dvec))
+  for (j in seq_len(J)) {
+    # A distance belongs to bin j if it falls within the interval
+    # centred at d[j] with half-width tol[j].
+    bin[dvec >= (d[j] - tol[j]) & dvec < (d[j] + tol[j])] <- j
   }
   
-  # Initial estimate regression function
-  fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y,
-                                h = h_reg, p = 1)
+  S_set <- data.frame(i = pairs[, 1], j = pairs[, 2], dist = dvec, bin = bin)
+  S_set <- S_set[!is.na(S_set$bin), ]
+  counts <- as.vector(tabulate(S_set$bin, nbins = J))
   
-  # Extract smoother matrix S
-  S <- fit$weights
-  if (length(dim(S)) == 3L) S <- S[, , 1L] # Ensure S is a 2D matrix
-  
-  # Obtain residuals
-  Yhat <- as.numeric(fit$Yhat)
-  residuals <- Y - Yhat
-  
-  rm(fit,Yhat)
-  
-  # Paiswise distances i < j
-  ind <- upper.tri(D)
-  dist <- D[ind]
-  
-  # Classical semivariogram:
-  # gamma_ij = 1/2 (residuals_i - residuals_j)^2
-  ii <- row(D)[ind]
-  jj <- col(D)[ind]
-  gamma <- 0.5 * (residuals[ii] - residuals[jj])^2
-  
-  correct <- is.finite(dist) & is.finite(gamma)
-  
-  dist <- dist[correct]
-  gamma <- gamma[correct]
-  ii <- ii[correct]
-  jj <- jj[correct]
-  
-  if (length(dist) == 0L){
-    stop("No valid pairs available for variogram estimation")
+  if (plot) {
+    par(mfrow = c(1, 2))
+    # Histogram of pairwise distances
+    hist(dvec, breaks = 30, xlab = "Normalized distance",
+         ylab = "Number of pairs")
+    # Bin centres
+    abline(v = d, lty = 2)
+    
+    # Number of pairs per bin
+    plot(d, counts, type = "b", pch = 19, log = "x", xlab = "Bin centre",
+      ylab = "Number of pairs", main = "Pairs per bin")
+    par(mfrow = c(1, 1))
   }
   
-  
-  # Initial nonparametric variogram; h_var = NULL, selected  minimizing MRSE.
-  svar <- svariso.from.pairs(dist = dist, gamma = gamma, maxlag = maxlag,
-                             nlags = nlags, h = h_var, degree = 1, 
-                             hat.bin = TRUE)
-  h_var <- svar$directional$h
-  maxlag <- svar$directional$maxlag
-  
-  # --------------------------------
-  # Iterative bias correction
-  # --------------------------------
-  error <- Inf
-  
-  # Sill of the pseudo-covariances. max(svar$est) (the npsp default) picks up
-  # the noisy estimates at the shortest lags, where there are almost no pairs,
-  # and leaves a spurious constant correlation at every lag. Use instead the
-  # bias-corrected residual variance: E[residuals_i^2] = sill + b_ii.
-  sill <- mean(residuals^2)
-  
-  for (iter in 1:max_iter) {
-    
-    # Covariance matrix estimated from the current nonparametric variogram
-    C_hat <- varcov.directional(svar = svar, D = D, sill = sill)
-    
-    SC <- S %*% C_hat
-    
-    # Bias matrix
-    B_hat <- SC %*% t(S) - SC - t(SC)
-    rm(SC, C_hat)
-    
-    # Pairwise bias correction
-    b_diag <- diag(B_hat)
-    bias_pair <- 0.5 * (b_diag[ii] + b_diag[jj]) - B_hat[cbind(ii, jj)]
-    
-    # Bias-corrected sill
-    sill.new <- mean(residuals^2 - b_diag)
-    
-    # Empirical residual semivariogram
-    gamma.resid <- 0.5 * ( residuals[ii] - residuals[jj])^2
-    
-    # Bias-corrected pairwise semivariogram
-    gamma.corrected <- gamma.resid - bias_pair
-    
-    rm(B_hat, b_diag, gamma.resid, bias_pair)
-    
-    
-    ok <- is.finite(dist) & is.finite(gamma.corrected) 
-    dist.corrected <- dist[ok]
-    gamma.corrected <- gamma.corrected[ok]
-    if (length(dist.corrected) < 10L) { stop("Too few valid pairs after bias correction") }
-    
-    # Re-estimate the variogram from corrected pairs
-    # If h_var was given, keep it fixed.
-    # If h_var was NULL, select a new bandwidth by MRSE.
-    
-    svar.new <- svariso.from.pairs(dist = dist.corrected,
-                                   gamma = gamma.corrected, maxlag = maxlag,
-                                   nlags = nlags, h = h_var, degree = 1, 
-                                   hat.bin = TRUE)
-    
-    # Relative squared error between consecutive variograms
-    #error <- mean((svar$est / svar.new$est - 1)^2, na.rm = TRUE)
-    denom <- max(abs(svar$est), na.rm = TRUE)
-    
-    error <- sqrt(mean((svar.new$est - svar$est)^2, na.rm = TRUE)) / max(denom, 1e-8) +
-      abs(sill.new / sill - 1)
-    
-    # Updates
-    svar <- svar.new
-    sill <- sill.new
-    h_var <- svar$directional$h
-    rm(svar.new, dist.corrected, gamma.corrected)
-    
-    # Convergence
-    if (is.finite(error) && error < tol) break
-    
-  }
-  
-  # Final Shapiro–Botha variogram model
-  svm <- npsp::fitsvar.sb.iso(svar, dk = 0)
-  if (!is.finite(svm$sill) || svm$sill <= 0) { 
-    stop("The fitted Shapiro-Botha sill is not positive and finite") }
-  
-  # return(
-  #   list(fit = fit, Yhat = Yhat, residuals = residuals, S = S, D = D,
-  #        svar = svar,svm = svm, h_reg = h_reg, h_var = h_var, maxlag = maxlag,
-  #        nlags = nlags, iter = iter,error = error)
-  # )
-  return(list(svm = svm, h_reg = h_reg, h_var = h_var, maxlag = maxlag, iter = iter,
-              error = error, sill = svm$sill, sill_corr = sill, svar = svar))
-  
+  list(d = d, tol = tol, J = J, S_set = S_set, counts = counts, dvec = dvec)
 }
 
-################################################################################
-# Covariance matrix from a fitted Shapiro-Botha model
-################################################################################
-varcov.svm.directional <- function(svm, D) {
+
+# Computes classical empirical semivariogram from binned regression residuals
+empirical_variogram <- function(eps, g) {
+  # Pairwise distances and bin assignments
+  S_set <- g$S_set
+  J <- g$J
   
-  n <- nrow(D)
+  gamma_val <- rep(NA_real_, J)
+  n_pairs   <- rep(0L, J)
   
-  if (ncol(D) != n) stop("'D' must be a square matrix")
-  if (!isTRUE(all.equal(D, t(D), tolerance = 1e-10))){
-    stop("'D' must be a symmetric distance matrix")}
+  # Compute semivariances for all pairs
+  if (!is.null(S_set) && nrow(S_set) > 0) {
+    # Pairwise semivariance: 0.5 * (e_i - e_j)^2
+    sq_diff <- 0.5 * (eps[S_set$i] - eps[S_set$j])^2
+    
+    # Sum and count semivariances within each bin
+    ag_sum <- tapply(sq_diff, S_set$bin, sum)
+    ag_count <- tapply(sq_diff, S_set$bin, length)
+    
+    
+    bins_present <- as.integer(names(ag_sum))
+    # Average semivariance within each bin
+    gamma_val[bins_present] <- as.numeric(ag_sum) / as.numeric(ag_count)
+    # Number of pairs per bin
+    n_pairs[bins_present] <- as.integer(ag_count)
+  }
   
-  # Distances corresponding to the lower triangle
-  dists <- D[lower.tri(D)]
-  
-  # Covariance from the fitted variogram model
-  covs <- npsp::covar(svm, dists, sill = svm$sill)
-  if (any(!is.finite(covs))) { stop("The fitted covariance contains non-finite values") }
-  
-  # Build covariance matrix
-  Sigma <- matrix(0,nrow = n, ncol = n)
-  Sigma[lower.tri(Sigma)] <- covs
-  Sigma <- Sigma + t(Sigma)
-  
-  # Variance at zero
-  diag(Sigma) <- svm$sill
-  
-  return(Sigma)
+  list(d = g$d, gamma = gamma_val, n = n_pairs)
 }
 
-################################################################################
-# Modified Generalized Cross-Validation for directional regression
-################################################################################
-
-mgcv <- function(X, Y, h, p, R) {
-  
+# Estimates spatial correlation matrix R by fitting an exponential variogram via NLS
+correlation_matrix <- function(X, Y, h, p, J = 20, D = NULL, min_pairs = 5) {
   n <- nrow(X)
+  if (is.null(D)) D <- geodesic_dist(X) / pi
   
-  fit <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
-  S <- fit$weights
-  if (length(dim(S)) == 3L) S <- S[, , 1L]
+  fit_pilot <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, h = h, p = p)
+  yhat <- as.numeric(fit_pilot$Yhat)
+  eps <- Y - yhat
   
-  Yhat <- as.numeric(fit$Yhat)
-  trSR <- sum(S * R)
-  denom <- 1 - (1/n) * trSR
-  if (!is.finite(denom) || denom <= 0) return(Inf)
+  #Distance bins and empirical variogram
+  g <- dist_est(X, D = D, J = J)
+  emp_var <- empirical_variogram(eps, g)
   
-  return(mean(((Y - Yhat) / denom)^2, na.rm = TRUE))
+  check <- is.finite(emp_var$gamma) & emp_var$d > 0 & emp_var$n >= min_pairs
+  if (sum(check) < 3) stop("Too few usable bins for NLS estimation.")
+  
+  d_j <- emp_var$d[check]
+  emp_j <- emp_var$gamma[check]
+  
+  # Define the exponential variogram objective
+  obj_nls <- function(par) {
+    # Define the exponential variogram objective
+    s2 <- exp(par[1]) #sigma2
+    a <- exp(par[2])  #alpga
+    # Log-scale parametrization ensures positive parameters
+    gamma_teorico <- s2 * (1 - exp(- d_j / a))
+    # Theoretical exponential variogram
+    val <- sum((emp_j - gamma_teorico)^2)
+    if (!is.finite(val)) return(1e10)
+    val
+  }
+  
+  # Initial values optimization
+  init_s2 <- log(pmax(quantile(emp_j, 0.9, na.rm = TRUE, names = FALSE), 1e-3))
+  init_a <- log(pmax(median(d_j) / 2, 0.1))
+  
+  # Fit the exponential variogram
+  opt <- tryCatch(
+    optim(par = c(init_s2, init_a), fn = obj_nls, method = "L-BFGS-B",
+          lower = c(log(1e-4), log(1e-4)), upper = c(log(100), log(10))),
+    error = function(e) {
+      optim(par = c(init_s2, init_a), fn = obj_nls, method = "Nelder-Mead")
+    }
+  )
+  
+  sigma2_hat <- exp(opt$par[1])
+  alpha_hat  <- exp(opt$par[2])
+  
+  R <- exp(- D / alpha_hat)
+  diag(R) <- 1
+  
+  list(R = R, alpha = alpha_hat, sigma2 = sigma2_hat, variogram = emp_var)
 }
 
 ################################################################################
-# Simulation Functions
+# Simulation Core Loop
 ################################################################################
-one_rep <- function(n, alpha, sigma2, m_fun, h_grid, d = 2,
-                    h_pilot = NULL, do_gcv = FALSE) {
-  
-  
-  X <- unif_sphere(n, d)
-  m_vals <- m_fun(X)
-  
-  # Normalized geodesic distance
+
+one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot, d = 2) {
+
+  if (!is.numeric(h_pilot) || length(h_pilot) != 1L || !is.finite(h_pilot) ||
+      h_pilot <= 0) {
+    stop("h_pilot must be a single positive number.")
+  }
+ 
+  X <- unif_sphere(n, d)               # (n x 3) points on S^2
+  m_vals <- m_fun(X)                   # true regression values at X
   D <- geodesic_dist(X) / pi
   
-  Sigma <- sigma2 * exp(-D / alpha)
+  Sigma <- sigma2 * exp(-D/ alpha) 
+  
+  if (inherits(try(chol(Sigma), silent = TRUE), "try-error")) {
+    stop(sprintf(" Sigma is not positive definite for n = %d and alpha = %.3f", 
+                 n, alpha))
+  }
+  
   eps <- as.numeric(mvrnorm(1, mu = rep(0, n), Sigma = Sigma))
   Y <- m_vals + eps
   
-  # TRUE correlation matrix
-  R_true <- Sigma / sigma2
-  
-  rm(Sigma, eps)
-  
-  
-  if (is.null(h_pilot)) {
-    h_pilot <- DirStatsOld::bw.pi.loc(data.dir = X, data.lin = Y, p = 1)$h.opt }
-  
-  # ASE function
-  ase <- function(h, p) {
-    yhat <- loc.directional.linear(x = X, data.dir = X, data.lin = Y, 
-                                   h = h, p = p)$Yhat
-    mean((yhat - m_vals)^2, na.rm = TRUE)
-  }
-  
-  out <- c()  
-  # Estimate spatial variogram and Shapiro-Botha model
-  vario <- tryCatch({
-    v <- variogram.est(X = X, Y = Y, D = D, h_reg = h_pilot, h_var = NULL,
-                       maxlag = 0.55 * max(D), max_iter = 15, nlags = 101, tol = 0.05)
-    v$R <- varcov.svm.directional(v$svm, D) / v$svm$sill
-    if (any(!is.finite(v$R))) stop("R no finita")
-    v
-  }, error = function(e) NULL)
-  
-  svm <- NULL
-  R <- NULL
-  
-  if (!is.null(vario)) {
-    
-    svm <- vario$svm
-    Sigma <- varcov.svm.directional(svm = svm, D = D)
-    R <- Sigma / svm$sill
-    
-    # Check estimated correlation matrix
-    if (any(!is.finite(R))) {
-      stop("Estimated correlation matrix contains non-finite values")
-    }
-    
-    if (max(abs(diag(R) - 1)) > 1e-8) {
-      warning("Estimated correlation matrix does not have unit diagonal")
-    }
-    
-    if (!isTRUE(all.equal(R, t(R), tolerance = 1e-10))) {
-      warning("Estimated correlation matrix is not exactly symmetric")
-    }
-    
-    R_error <- sqrt(mean(( R[lower.tri(R)] - R_true[lower.tri(R)])^2))
-    
-  } else {
-    
-    R <- NULL
-    R_error <- NA_real_
-  }
+  out <- c()
   
   for (p in c(0, 1)) {
     tag <- if (p == 0) "nw" else "ll"
     
-    # ASE Benchmark
-    ase_vals <- sapply(h_grid, function(h) ase(h, p))
-    idx_case <- which.min(ase_vals)
-    out[paste0(tag, "_h_case")] <- h_grid[idx_case]
-    out[paste0(tag, "_ase_case")] <- ase_vals[idx_case]
+    ## --- ASE : true ase over the whole grid (one fit for all h) ---
+    mhat <- loc.directional.linear(x = X, data.dir = X, data.lin = Y,
+                                   h = h_grid, p = p)$Yhat
+    ase_vals <- colMeans((mhat - m_vals)^2)
+    ase_vals[!is.finite(ase_vals)] <- Inf
     
-    # LOO CV
-    cv_vals <- sapply(h_grid, function(h) cv_loo(X, Y, h, p))
-    idx_cv<- which.min(cv_vals)
-    out[paste0(tag, "_h_cv")] <- h_grid[idx_cv]
-    out[paste0(tag, "_ase_cv")] <- ase_vals[idx_cv]
+    idx_ase <- if (all(!is.finite(ase_vals))) {NA} else {which.min(ase_vals)}
+    out[paste0(tag, "_h_ase")] <- h_grid[idx_ase]
+    out[paste0(tag, "_mse_ase")] <- ase_vals[idx_ase]
     
-    # GCV
-    if (do_gcv) {
-      gcv_vals <- sapply(h_grid, function(h) gcv(X, Y, h, p))
-      idx_gcv  <- which.min(gcv_vals)
-      out[paste0(tag, "_h_gcv")]  <- h_grid[idx_gcv]
-      out[paste0(tag, "_ase_gcv")] <- ase_vals[idx_gcv]
-    }
-    
-    
-    # Non-parametric MGCV
-    
-    # If variogram estimation fails
-    if (is.null(vario)) {
-      out[paste0(tag, "_h_mgcv")] <- NA_real_
-      out[paste0(tag, "_ase_mgcv")] <- NA_real_
-      out[paste0(tag, "_h_mgcv_true")] <- NA_real_
-      out[paste0(tag, "_ase_mgcv_true")] <- NA_real_
-      out[paste0(tag, "_sigma2_hat")] <- NA_real_
-      out[paste0(tag, "_R_error")] <- NA_real_
-      next
-    }
-    # Estimated still
-    out[paste0(tag, "_sigma2_hat")] <- svm$sill
-    
-    # Error of estimated correlation matrix
-    out[paste0(tag, "_R_error")] <- R_error
-    
-    # Evaluate MGCV over h_grid
-    mgcv_vals <- sapply(h_grid, function(h) {
-      tryCatch( mgcv( X = X, Y = Y, h = h, p = p, R = R),
-                error = function(e) Inf)}
+    ## --- CV --- (ASE of the selected h read from ase_vals; NA if CV failed)
+    h_cv <- cv(X, Y, h_grid, p)$h
+    out[paste0(tag, "_h_cv")] <- h_cv
+    out[paste0(tag, "_mse_cv")] <- if (is.na(h_cv)) NA_real_ else
+      ase_vals[match(h_cv, h_grid)]
+
+    # MGCV
+    cm <- tryCatch(
+      correlation_matrix(X, Y, h = h_pilot, p = p, J = 20, D = D, min_pairs = 5),
+      error = function(e) NULL
     )
     
-    # Select MGCV bandwidth
-    if (all(!is.finite(mgcv_vals))) {
-      out[paste0(tag, "_h_mgcv")] <- NA_real_
-      out[paste0(tag, "_ase_mgcv")] <- NA_real_
-    } else {
-      idx_mgcv <- which.min(mgcv_vals)
-      out[paste0(tag, "_h_mgcv")] <-h_grid[idx_mgcv]
-      out[paste0(tag, "_ase_mgcv")] <- ase_vals[idx_mgcv]
-    }
+    Rhat <- if (is.null(cm)) NULL else cm$R
+    out[paste0(tag, "_alpha_hat")] <- if (is.null(cm)) NA_real_ else cm$alpha
     
-    # MGCV using TRUE R
-    mgcv_true_vals <- sapply( h_grid,function(h) 
-    { tryCatch( mgcv( X = X, Y = Y, h = h, p = p, R = R_true),
-                error = function(e) Inf)
-    }
-    )
-    
-    if (all(!is.finite(mgcv_true_vals))) {
-      out[paste0(tag, "_h_mgcv_true")] <- NA_real_
-      out[paste0(tag, "_ase_mgcv_true")] <- NA_real_
+    if (is.null(Rhat)) {
+      out[paste0(tag, "_h_mgcv")]   <- NA_real_
+      out[paste0(tag, "_mse_mgcv")] <- NA_real_
     } else {
-      idx_mgcv_true <- which.min(mgcv_true_vals)
-      out[paste0(tag, "_h_mgcv_true")] <- h_grid[idx_mgcv_true]
-      out[paste0(tag, "_ase_mgcv_true")] <- ase_vals[idx_mgcv_true]
+      h_mgcv <- mgcv(X, Y, h_grid, p, R = Rhat)$h
+      
+      out[paste0(tag, "_h_mgcv")] <- h_mgcv
+      
+      if (is.na(h_mgcv)) {
+        out[paste0(tag, "_mse_mgcv")] <- NA_real_
+      } else {
+        out[paste0(tag, "_mse_mgcv")] <-
+          ase_vals[match(h_mgcv, h_grid)]
+      }
     }
   }
   
-  return(out)
+  return(list(results = out, X = X, Y = Y))
 }
 
 run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
-                           h_grid, d = 2, cores = 1,
-                           h_pilot = NULL, do_gcv = FALSE) {
+                           h_grid, h_pilot, d = 2, cores = 1) {
   
   doFuture::registerDoFuture()
   future::plan(future::multisession(), workers = cores)
@@ -531,74 +346,74 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
         prog <- progressr::progressor(along = seq_len(MC))
         
         reps <- foreach(k = seq_len(MC), .inorder = TRUE,
-                        .packages = c("DirStatsOld", "DirStats", "MASS", "npsp"),
-                        .export = c("one_rep", "cv_loo", "gcv", "mgcv",
-                                    "geodesic_dist", "unif_sphere",
-                                    "m_funs","varcov.svm.directional",
-                                    "svariso.from.pairs","varcov.directional", 
-                                    "variogram.est","h_grid", "do_gcv", "sigma2",
-                                    "d", "h_pilot", "m_idx", "mgcv_from_R")) %dorng% {
+                        .packages = c("DirStatsOld", "MASS"),
+                        .export = c("one_rep", "cv", "mgcv", 
+                                    "correlation_matrix", "dist_est", 
+                                    "empirical_variogram", "geodesic_dist",
+                                    "unif_sphere", 
+                                    "m_funs", "h_grid", "sigma2", 
+                                    "d", "h_pilot", "m_idx")) %dorng% {
                                       prog()
-                                      one_rep(n = n, alpha = alpha, sigma2 = sigma2,
+                                      one_rep(n = n, alpha = alpha, 
+                                              sigma2 = sigma2,
                                               m_fun   = m_funs[[m_idx]],
                                               h_grid  = h_grid,
-                                              d = d, do_gcv = do_gcv,
-                                              h_pilot = h_pilot)
+                                              d = d, h_pilot = h_pilot)
                                     }
       })
       
-      mat <- do.call(rbind, reps)
+      mat <- do.call(rbind, lapply(reps, `[[`, "results"))
+      samples <- lapply(reps, function(r) list(X = r$X, Y = r$Y))
       
       key <- paste0("n", n, "_a", alpha_idx)
       results[[key]] <- list(
-        n = n, 
+        n = n,
         alpha = alpha,
+        h_pilot = h_pilot,
         mat = mat,
-        
-        mean_ase_nw_case = mean(mat[, "nw_ase_case"], na.rm = TRUE),
-        mean_ase_ll_case = mean(mat[, "ll_ase_case"], na.rm = TRUE),
-        sd_ase_nw_case   = sd(mat[, "nw_ase_case"], na.rm = TRUE),
-        sd_ase_ll_case   = sd(mat[, "ll_ase_case"], na.rm = TRUE),
-        mean_h_nw_case   = mean(mat[, "nw_h_case"], na.rm = TRUE),
-        mean_h_ll_case   = mean(mat[, "ll_h_case"], na.rm = TRUE),
-        
-        mean_ase_nw_cv   = mean(mat[, "nw_ase_cv"], na.rm = TRUE),
-        mean_ase_ll_cv   = mean(mat[, "ll_ase_cv"], na.rm = TRUE),
-        sd_ase_nw_cv     = sd(mat[, "nw_ase_cv"], na.rm = TRUE),
-        sd_ase_ll_cv     = sd(mat[, "ll_ase_cv"], na.rm = TRUE),
-        mean_h_nw_cv     = mean(mat[, "nw_h_cv"], na.rm = TRUE),
-        mean_h_ll_cv     = mean(mat[, "ll_h_cv"], na.rm = TRUE),
-        
-        
-        # MGCV using the TRUE correlation matrix
-        mean_ase_nw_mgcv = mean(mat[, "nw_ase_mgcv"], na.rm = TRUE),
-        mean_ase_ll_mgcv = mean(mat[, "ll_ase_mgcv"], na.rm = TRUE),
-        sd_ase_nw_mgcv   = sd(mat[, "nw_ase_mgcv"],   na.rm = TRUE),
-        sd_ase_ll_mgcv   = sd(mat[, "ll_ase_mgcv"],   na.rm = TRUE),
+        samples = samples,
+         
+        mean_mse_nw_cv = mean(mat[, "nw_mse_cv"], na.rm = TRUE),
+        mean_mse_nw_mgcv = mean(mat[, "nw_mse_mgcv"], na.rm = TRUE),
+        mean_mse_nw_ase = mean(mat[, "nw_mse_ase"], na.rm = TRUE),
+        mean_mse_ll_cv  = mean(mat[, "ll_mse_cv"], na.rm = TRUE),
+        mean_mse_ll_mgcv = mean(mat[, "ll_mse_mgcv"], na.rm = TRUE),
+        mean_mse_ll_ase = mean(mat[, "ll_mse_ase"], na.rm = TRUE),
+         
+        median_mse_nw_cv  = median(mat[, "nw_mse_cv"], na.rm = TRUE),
+        median_mse_nw_mgcv  = median(mat[, "nw_mse_mgcv"], na.rm = TRUE),
+        median_mse_nw_ase = median(mat[, "nw_mse_ase"], na.rm = TRUE),
+        median_mse_ll_cv  = median(mat[, "ll_mse_cv"], na.rm = TRUE),
+        median_mse_ll_mgcv  = median(mat[, "ll_mse_mgcv"], na.rm = TRUE),
+        median_mse_ll_ase = median(mat[, "ll_mse_ase"], na.rm = TRUE),
+         
+        sd_mse_nw_cv = sd(mat[, "nw_mse_cv"], na.rm = TRUE),
+        sd_mse_nw_mgcv = sd(mat[, "nw_mse_mgcv"], na.rm = TRUE),
+        sd_mse_nw_ase = sd(mat[, "nw_mse_ase"], na.rm = TRUE),
+        sd_mse_ll_cv = sd(mat[, "ll_mse_cv"], na.rm = TRUE),
+        sd_mse_ll_mgcv = sd(mat[, "ll_mse_mgcv"], na.rm = TRUE),
+        sd_mse_ll_ase = sd(mat[, "ll_mse_ase"], na.rm = TRUE),
+                               
+        mean_h_nw_cv = mean(mat[, "nw_h_cv"], na.rm = TRUE),
         mean_h_nw_mgcv = mean(mat[, "nw_h_mgcv"], na.rm = TRUE),
+        mean_h_nw_ase = mean(mat[, "nw_h_ase"], na.rm = TRUE),
+        mean_h_ll_cv = mean(mat[, "ll_h_cv"], na.rm = TRUE),
         mean_h_ll_mgcv = mean(mat[, "ll_h_mgcv"], na.rm = TRUE),
-        mean_h_nw_mgcv_true = mean(mat[, "nw_h_mgcv_true"], na.rm = TRUE),
-        mean_h_ll_mgcv_true = mean(mat[, "ll_h_mgcv_true"], na.rm = TRUE),
-        
-        # Error in estimated correlation matrix
-        mean_R_error_nw =  mean(mat[, "nw_R_error"], na.rm = TRUE),
-        mean_R_error_ll = mean(mat[, "ll_R_error"], na.rm = TRUE),
-        sd_R_error_nw = sd(mat[, "nw_R_error"], na.rm = TRUE),
-        sd_R_error_ll = sd(mat[, "ll_R_error"], na.rm = TRUE),
-        
-        med_sigma2_hat_nw = median(mat[, "nw_sigma2_hat"], na.rm = TRUE),
-        med_sigma2_hat_ll = median(mat[, "ll_sigma2_hat"], na.rm = TRUE)
-        
+        mean_h_ll_ase = mean(mat[, "ll_h_ase"], na.rm = TRUE),
+         
+        median_h_nw_cv = median(mat[, "nw_h_cv"], na.rm = TRUE),
+        median_h_nw_mgcv = median(mat[, "nw_h_mgcv"], na.rm = TRUE),
+        median_h_nw_ase = median(mat[, "nw_h_ase"], na.rm = TRUE),
+        median_h_ll_cv = median(mat[, "ll_h_cv"], na.rm = TRUE),
+        median_h_ll_mgcv = median(mat[, "ll_h_mgcv"], na.rm = TRUE),
+        median_h_ll_ase = median(mat[, "ll_h_ase"], na.rm = TRUE),
+                               
+    
+        n_fail_nw_mgcv = sum(is.na(mat[, "nw_mse_mgcv"])),
+        n_fail_ll_mgcv = sum(is.na(mat[, "ll_mse_mgcv"])),
+        med_alpha_hat_nw = median(mat[, "nw_alpha_hat"], na.rm = TRUE),
+        med_alpha_hat_ll = median(mat[, "ll_alpha_hat"], na.rm = TRUE)
       )
-      
-      if (do_gcv) {
-        results[[key]]$mean_ase_nw_gcv <- mean(mat[, "nw_ase_gcv"])
-        results[[key]]$mean_ase_ll_gcv <- mean(mat[, "ll_ase_gcv"])
-        results[[key]]$sd_ase_nw_gcv   <- sd(mat[, "nw_ase_gcv"])
-        results[[key]]$sd_ase_ll_gcv   <- sd(mat[, "ll_ase_gcv"])
-        results[[key]]$mean_h_nw_gcv   <- mean(mat[, "nw_h_gcv"])
-        results[[key]]$mean_h_ll_gcv   <- mean(mat[, "ll_h_gcv"])
-      }
     }
   }
   
@@ -606,76 +421,67 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
   return(results)
 }
 
-
-################################################################################
-# Print Tables
-################################################################################
-
-make_table <- function(results, print_h = TRUE) {
-  all_n     <- sort(unique(sapply(results, `[[`, "n")))
-  all_alpha <- sort(unique(sapply(results, `[[`, "alpha")))
-  has_gcv   <- !is.null(results[[1]]$mean_ase_nw_gcv)
+make_table <- function(results, med = FALSE, print_h = TRUE) {
   
-  fmt   <- function(m, s) sprintf("%.5f (%.5f)", m, s)
-  fmt_h <- function(h)    sprintf("%.5f", h)
+  stat <- if (med) "median" else "mean"
+  fmt <- function(x, s) {sprintf("%.5f (%.5f)", x, s)}
+  fmt_h <- function(h) {sprintf("%.5f", h)}
   
   rows <- list()
   
-  for (ai in seq_along(all_alpha)) {
-    for (n in all_n) {
-      key <- paste0("n", n, "_a", ai)
-      r <- results[[key]]
-      if (is.null(r)) next
+  for (r in results) {
+    
+    row <- data.frame(alpha = r$alpha, n = r$n,
+      NW_CV = fmt(r[[paste0(stat, "_mse_nw_cv")]], r$sd_mse_nw_cv),
+      NW_MGCV = fmt(r[[paste0(stat, "_mse_nw_mgcv")]], r$sd_mse_nw_mgcv),
+      NW_ASE = fmt(r[[paste0(stat, "_mse_nw_ase")]], r$sd_mse_nw_ase),
       
-      row <- data.frame(
-        alpha   = all_alpha[ai],
-        n       = n,
-        NW_CV   = fmt(r$mean_ase_nw_cv,   r$sd_ase_nw_cv),
-        NW_MGCV = fmt(r$mean_ase_nw_mgcv, r$sd_ase_nw_mgcv),
-        NW_CASE = fmt(r$mean_ase_nw_case, r$sd_ase_nw_case),
-        LL_CV   = fmt(r$mean_ase_ll_cv,   r$sd_ase_ll_cv),
-        LL_MGCV = fmt(r$mean_ase_ll_mgcv, r$sd_ase_ll_mgcv),
-        LL_CASE = fmt(r$mean_ase_ll_case, r$sd_ase_ll_case),
-        stringsAsFactors = FALSE
-      )
+      LL_CV = fmt(r[[paste0(stat, "_mse_ll_cv")]], r$sd_mse_ll_cv),
+      LL_MGCV = fmt(r[[paste0(stat, "_mse_ll_mgcv")]], r$sd_mse_ll_mgcv),
+      LL_ASE = fmt(r[[paste0(stat, "_mse_ll_ase")]], r$sd_mse_ll_ase),
+      stringsAsFactors = FALSE)
+    
+    if (print_h) {
       
-      if (has_gcv) {
-        row$NW_GCV <- fmt(r$mean_ase_nw_gcv, r$sd_ase_nw_gcv)
-        row$LL_GCV <- fmt(r$mean_ase_ll_gcv, r$sd_ase_ll_gcv)
-      }
-      
-      if (print_h) {
-        row$NW_h_CV   <- fmt_h(r$mean_h_nw_cv)
-        row$NW_h_MGCV <- fmt_h(r$mean_h_nw_mgcv)
-        row$NW_h_CASE <- fmt_h(r$mean_h_nw_case)
-        row$LL_h_CV   <- fmt_h(r$mean_h_ll_cv)
-        row$LL_h_MGCV <- fmt_h(r$mean_h_ll_mgcv)
-        row$LL_h_CASE <- fmt_h(r$mean_h_ll_case)
-        
-        if (has_gcv) {
-          row$NW_h_GCV <- fmt_h(r$mean_h_nw_gcv)
-          row$LL_h_GCV <- fmt_h(r$mean_h_ll_gcv)
-        }
-      }
-      
-      rows <- c(rows, list(row))
+      row$NW_h_CV <- fmt_h(r[[paste0(stat, "_h_nw_cv")]])
+      row$NW_h_MGCV <- fmt_h(r[[paste0(stat, "_h_nw_mgcv")]])
+      row$NW_h_ASE <- fmt_h(r[[paste0(stat, "_h_nw_ase")]])
+      row$LL_h_CV <- fmt_h(r[[paste0(stat, "_h_ll_cv")]])
+      row$LL_h_MGCV <- fmt_h(r[[paste0(stat, "_h_ll_mgcv")]])
+      row$LL_h_ASE <- fmt_h(r[[paste0(stat, "_h_ll_ase")]])
     }
+    rows <- c(rows, list(row))
   }
   
   tab <- do.call(rbind, rows)
   rownames(tab) <- NULL
   
-  nw_ase <- c("NW_CV", if (has_gcv) "NW_GCV", "NW_MGCV", "NW_CASE")
-  ll_ase <- c("LL_CV", if (has_gcv) "LL_GCV", "LL_MGCV", "LL_CASE")
-  
+  # Error / ASE columns
+  nw_mse <- c("NW_CV", "NW_MGCV", "NW_ASE")
+  ll_mse <- c( "LL_CV","LL_MGCV","LL_ASE")
+
   if (print_h) {
-    nw_h <- c("NW_h_CV", if (has_gcv) "NW_h_GCV", "NW_h_MGCV", "NW_h_CASE")
-    ll_h <- c("LL_h_CV", if (has_gcv) "LL_h_GCV", "LL_h_MGCV", "LL_h_CASE")
-    col_order <- c("alpha", "n", nw_ase, nw_h, ll_ase, ll_h)
+    nw_h <- c("NW_h_CV", "NW_h_MGCV","NW_h_ASE")
+    ll_h <- c("LL_h_CV","LL_h_MGCV","LL_h_ASE" )
+    col_order <- c("alpha","n",nw_mse,nw_h, ll_mse,ll_h)
   } else {
-    col_order <- c("alpha", "n", nw_ase, ll_ase)
+    col_order <- c( "alpha","n",nw_mse,ll_mse)
   }
   
-  tab[, col_order]
+  tab <- tab[, col_order, drop = FALSE]
+  # Order by alpha and then sample size
+  tab <- tab[order(tab$alpha, tab$n), ]
+  
+  rownames(tab) <- NULL
+  
+  tab
 }
 
+alpha_table <- function(results) {
+  tab <- do.call(rbind, lapply(results, function(r)
+    data.frame(alpha = r$alpha, n = r$n,
+               alpha_hat_NW = round(r$med_alpha_hat_nw, 3),
+               alpha_hat_LL = round(r$med_alpha_hat_ll, 3))))
+  rownames(tab) <- NULL
+  tab[order(tab$alpha, tab$n), ]
+}
