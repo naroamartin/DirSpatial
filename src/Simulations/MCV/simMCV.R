@@ -2,22 +2,19 @@
 # Simulation
 ################################################################################
 rm(list = ls())
-source("setupMCV.R")
+source("setupMCV_n.R")
 
 ## ------ Simulation parameters -----------------------------------------------
-MC <- 2
+MC <- 500
 d <- 2
-
 n_values <- c(100, 200, 400)
 alpha_vals <- c(0.1, 0.3, 0.6)
 sigma2 <- 1
-
 m_idx_vals <- c(1)
-
 h_grid <- seq(0.03, 1.0, length.out = 40)
-ell_vals <- c(0.1, 0.2, 0.3, 0.4, 0.5)   # standardized scale; 0.5 = hemisphere
+ell_vals <- c(0.05, 0.1, 0.15, 0.2, 0.25)
 
-cores <- parallel::detectCores() - 1
+cores <- parallel::detectCores() - 3
 
 output_dir <- "sim_workspaces"
 if (!dir.exists(output_dir)) dir.create(output_dir)
@@ -41,6 +38,6 @@ for (m_idx in m_idx_vals) {
     cat(sprintf("Saved %s\n", fname))
   }
 }
- 
-tab <- make_table(results, ell_vals)
+
+tab <- make_table(results, ell_vals, print_h = TRUE)
 print(tab, row.names = FALSE)
