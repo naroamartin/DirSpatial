@@ -69,6 +69,45 @@ cv <- function(X, Y, h_grid, p, plot = FALSE) {
   return(list(h = h, cv_min = cv_min))
 }
 
+##------ Modified cross-validation (used only to choose the pilot) -----------
+# MCV(h) = (1/n) sum_i [ Y_i - m_hat_{h,p,-N(i)}(X_i) ]^2
+#  N(i) = { j : theta(X_j, X_i) / pi <= ell }
+mcv <- function(X, Y, h_grid, p, ell, D = NULL) {
+  n <- nrow(X)
+  if (is.null(D)) D <- geodesic_dist(X) / pi
+  min_train <- p * (ncol(X) - 1) + 1
+  res <- matrix(NA_real_, nrow = n, ncol = length(h_grid))
+
+  for (i in seq_len(n)) {
+    # N(i) always contains i itself (D[i, i] = 0)
+    idx_train <- which(D[i, ] > ell)
+    if (length(idx_train) < min_train) next
+
+    yhat_i <- loc.directional.linear(x = X[i, , drop = FALSE],
+                                     data.dir = X[idx_train, , drop = FALSE],
+                                     data.lin = Y[idx_train], h = h_grid,
+                                     p = p)$Yhat
+    res[i, ] <- (Y[i] - drop(yhat_i))^2
+  }
+  mcv_error <- colMeans(res)
+  mcv_error[!is.finite(mcv_error)] <- Inf
+
+  if (all(!is.finite(mcv_error))) return(list(h = NA_real_, mcv_min = NA_real_))
+  idx <- which.min(mcv_error)
+  list(h = h_grid[idx], mcv_min = mcv_error[idx])
+}
+
+##------ Data-driven pilot bandwidth ------------------------------------------
+# h_pilot = c_pilot * h_MCV. MCV removes the correlated neighbours, so h_MCV
+# adapts to the curvature of m without collapsing like CV; the factor c_pilot
+# oversmooths so the pilot residuals keep the spatial correlation.
+pilot_bandwidth <- function(X, Y, h_grid, p, D = NULL, ell_pilot = 0.1,
+                            c_pilot = 2) {
+  h_mcv <- mcv(X, Y, h_grid, p, ell = ell_pilot, D = D)$h
+  if (is.na(h_mcv)) return(NA_real_)
+  min(c_pilot * h_mcv, max(h_grid))
+}
+
 mgcv <- function(X, Y, h_grid, p, R = NULL, D = NULL, h_pilot = NULL,
                  J = 20, min_pairs = 5, plot = FALSE) {
   n <- nrow(X)
@@ -252,11 +291,15 @@ correlation_matrix <- function(X, Y, h, p, J = 20, D = NULL, min_pairs = 5) {
 # Simulation Core Loop
 ################################################################################
 
-one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot, d = 2) {
+# h_pilot = NULL: data-driven pilot (c_pilot * h_MCV with ell_pilot), computed
+# separately for p = 0 and p = 1. A positive number fixes the pilot instead
+# (useful for sensitivity analyses).
+one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot = NULL,
+                    ell_pilot = 0.1, c_pilot = 2, d = 2) {
 
-  if (!is.numeric(h_pilot) || length(h_pilot) != 1L || !is.finite(h_pilot) ||
-      h_pilot <= 0) {
-    stop("h_pilot must be a single positive number.")
+  if (!is.null(h_pilot) && (!is.numeric(h_pilot) || length(h_pilot) != 1L ||
+                            !is.finite(h_pilot) || h_pilot <= 0)) {
+    stop("h_pilot must be NULL or a single positive number.")
   }
  
   X <- unif_sphere(n, d)               # (n x 3) points on S^2
@@ -295,8 +338,14 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot, d = 2) {
       ase_vals[match(h_cv, h_grid)]
 
     # MGCV
-    cm <- tryCatch(
-      correlation_matrix(X, Y, h = h_pilot, p = p, J = 20, D = D, min_pairs = 5),
+    h_pil <- if (is.null(h_pilot)) {
+      pilot_bandwidth(X, Y, h_grid, p, D = D, ell_pilot = ell_pilot,
+                      c_pilot = c_pilot)
+    } else h_pilot
+    out[paste0(tag, "_h_pilot")] <- h_pil
+
+    cm <- if (is.na(h_pil)) NULL else tryCatch(
+      correlation_matrix(X, Y, h = h_pil, p = p, J = 20, D = D, min_pairs = 5),
       error = function(e) NULL
     )
     
@@ -324,7 +373,8 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot, d = 2) {
 }
 
 run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
-                           h_grid, h_pilot, d = 2, cores = 1) {
+                           h_grid, h_pilot = NULL, ell_pilot = 0.1,
+                           c_pilot = 2, d = 2, cores = 1) {
   
   doFuture::registerDoFuture()
   future::plan(future::multisession(), workers = cores)
@@ -347,18 +397,22 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
         
         reps <- foreach(k = seq_len(MC), .inorder = TRUE,
                         .packages = c("DirStatsOld", "MASS"),
-                        .export = c("one_rep", "cv", "mgcv", 
-                                    "correlation_matrix", "dist_est", 
+                        .export = c("one_rep", "cv", "mgcv", "mcv",
+                                    "pilot_bandwidth",
+                                    "correlation_matrix", "dist_est",
                                     "empirical_variogram", "geodesic_dist",
-                                    "unif_sphere", 
-                                    "m_funs", "h_grid", "sigma2", 
-                                    "d", "h_pilot", "m_idx")) %dorng% {
+                                    "unif_sphere",
+                                    "m_funs", "h_grid", "sigma2",
+                                    "d", "h_pilot", "ell_pilot", "c_pilot",
+                                    "m_idx")) %dorng% {
                                       prog()
-                                      one_rep(n = n, alpha = alpha, 
+                                      one_rep(n = n, alpha = alpha,
                                               sigma2 = sigma2,
                                               m_fun   = m_funs[[m_idx]],
                                               h_grid  = h_grid,
-                                              d = d, h_pilot = h_pilot)
+                                              h_pilot = h_pilot,
+                                              ell_pilot = ell_pilot,
+                                              c_pilot = c_pilot, d = d)
                                     }
       })
       
@@ -370,6 +424,8 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
         n = n,
         alpha = alpha,
         h_pilot = h_pilot,
+        ell_pilot = ell_pilot,
+        c_pilot = c_pilot,
         mat = mat,
         samples = samples,
          
@@ -412,7 +468,9 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
         n_fail_nw_mgcv = sum(is.na(mat[, "nw_mse_mgcv"])),
         n_fail_ll_mgcv = sum(is.na(mat[, "ll_mse_mgcv"])),
         med_alpha_hat_nw = median(mat[, "nw_alpha_hat"], na.rm = TRUE),
-        med_alpha_hat_ll = median(mat[, "ll_alpha_hat"], na.rm = TRUE)
+        med_alpha_hat_ll = median(mat[, "ll_alpha_hat"], na.rm = TRUE),
+        med_h_pilot_nw = median(mat[, "nw_h_pilot"], na.rm = TRUE),
+        med_h_pilot_ll = median(mat[, "ll_h_pilot"], na.rm = TRUE)
       )
     }
   }
@@ -481,7 +539,9 @@ alpha_table <- function(results) {
   tab <- do.call(rbind, lapply(results, function(r)
     data.frame(alpha = r$alpha, n = r$n,
                alpha_hat_NW = round(r$med_alpha_hat_nw, 3),
-               alpha_hat_LL = round(r$med_alpha_hat_ll, 3))))
+               alpha_hat_LL = round(r$med_alpha_hat_ll, 3),
+               h_pilot_NW = round(r$med_h_pilot_nw, 3),
+               h_pilot_LL = round(r$med_h_pilot_ll, 3))))
   rownames(tab) <- NULL
   tab[order(tab$alpha, tab$n), ]
 }
