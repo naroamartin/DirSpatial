@@ -7,6 +7,7 @@ source("src/Simulations/MGCV/setupMGCV.R")
 MC <- 100
 d <- 2
 n_values <- c(100, 200, 400)
+# Effective correlation range is alpha / n^{1/d} (same design as MCV)
 alpha_vals <- c(0.1, 0.3, 0.6)
 sigma2 <- 1
 m_idx_vals <- c(1)
@@ -19,7 +20,7 @@ h_pilot <- NULL
 ell_pilot <- 0.1
 c_pilot <- 2
 
-cores <- max(1, parallel::detectCores() - 1)
+cores <- parallel::detectCores() - 3
 
 output_dir <- "sim_workspaces"
 

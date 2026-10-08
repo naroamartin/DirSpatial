@@ -162,8 +162,10 @@ dist_est <- function(X, D = NULL, J = 20, plot = FALSE) {
   pairs <- pairs[keep, , drop = FALSE]
   if (!length(dvec)) stop("No positive pairwise distances.")
   
-  # Define the range of distances used for binning
-  d_min <- max(quantile(dvec, 0.005, names = FALSE), 0.005)
+  # Define the range of distances used for binning. The first bins must reach
+  # small distances: with the n^{1/d} scaling the correlation range is
+  # alpha / n^{1/d} (about 0.02-0.06), below the old lower limit 0.005-quantile
+  d_min <- max(quantile(dvec, 0.0002, names = FALSE), 0.002)
   d_max <- quantile(dvec, 0.95, names = FALSE)
   
   # Define logarithmically spaced reference distances
@@ -306,7 +308,9 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot = NULL,
   m_vals <- m_fun(X)                   # true regression values at X
   D <- geodesic_dist(X) / pi
   
-  Sigma <- sigma2 * exp(-D/ alpha) 
+  # Correlation range shrinks as alpha / n^{1/d} (assumption A4), same design
+  # as in setupMCV.R
+  Sigma <- sigma2 * exp(-(D * n^(1/d)) / alpha)
   
   if (inherits(try(chol(Sigma), silent = TRUE), "try-error")) {
     stop(sprintf(" Sigma is not positive definite for n = %d and alpha = %.3f", 
@@ -350,7 +354,10 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot = NULL,
     )
     
     Rhat <- if (is.null(cm)) NULL else cm$R
-    out[paste0(tag, "_alpha_hat")] <- if (is.null(cm)) NA_real_ else cm$alpha
+    # The variogram fits exp(-D / a), so a estimates alpha / n^{1/d};
+    # rescale to compare with alpha
+    out[paste0(tag, "_alpha_hat")] <- if (is.null(cm)) NA_real_ else
+      cm$alpha * n^(1/d)
     
     if (is.null(Rhat)) {
       out[paste0(tag, "_h_mgcv")]   <- NA_real_
