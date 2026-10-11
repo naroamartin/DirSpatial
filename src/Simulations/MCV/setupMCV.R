@@ -45,19 +45,21 @@ unif_sphere <- function(n, d) {
 ################################################################################
 
 ##------ Modified  cross-validation -----------------------------------------
-# MCV(h) = (1/n) sum_i [ Y_i - m_hat_{h,p,-N(i)}(X_i) ]^2
-#  N(i) = { j : theta(X_j, X_i) / pi <= ell }
-#  For S^2 (sphere), N(i) is a spherical cap of geodesic radius pi * ell around
 
 mcv <- function(X, Y, h_grid, p, ell, D = NULL, plot = FALSE) {
   n <- nrow(X)
-  if (is.null(D)) D <- geodesic_dist(X) / pi # (n x n) geodesic distances
+  if (is.null(D)) D <- geodesic_dist(X)/pi 
   min_train <- p * (ncol(X) - 1) + 1
   res <- matrix(NA_real_, nrow = n, ncol = length(h_grid))
   
+  n_deleted <- integer(n)
+
   for (i in seq_len(n)) {
-    # N(i) always contains i itself (D[i, i] = 0)
+  
+    # N(i) contains i itself (D[i, i] = 0)
     idx_train <- which(D[i, ] > ell)
+    
+    n_deleted[i] <- n - length(idx_train)
     
     # Skip if too few points remain after removing N(i) to fit a
     # degree-p polynomial
@@ -69,10 +71,11 @@ mcv <- function(X, Y, h_grid, p, ell, D = NULL, plot = FALSE) {
                                      p = p)$Yhat
     res[i, ] <- (Y[i] - drop(yhat_i))^2
   }
+  
   mcv_error <- colMeans(res)
   mcv_error[!is.finite(mcv_error)] <- Inf
   
-  # No valid bandwidth in the grid: return NA instead of h_grid[1]
+  # No valid bandwidth in the grid: return NA
   if (all(!is.finite(mcv_error))) return(list(h = NA_real_, mcv_min = NA_real_))
   
   # Bandwidth minimizing MCV
@@ -83,20 +86,22 @@ mcv <- function(X, Y, h_grid, p, ell, D = NULL, plot = FALSE) {
   if (plot) {
     plot(h_grid, mcv_error, type = "b", pch = 19, xlab = "Bandwidth h",
          ylab = "MCV(h)")
-    points(h, mcv_min,pch = 19,cex = 1.5)
+    points(h, mcv_min,pch = 19, cex = 1.5)
     abline(v = h,lty = 2)
   }
-  return(list(h = h, mcv_min = mcv_min))
+  return(list(h = h, mcv_min = mcv_min, n_deleted = n_deleted,   
+              mean_deleted = mean(n_deleted)))
 }
+
+
 
 ################################################################################
 # Simulation functions
 ################################################################################
-
 ## ------ Single Monte Carlo iteration ----------------------------------------
 ## Returns a named vector with ase (and selected h) for:
-##   NW  (p=0): CV, MCV, ASE
-##   LL  (p=1): CV, MCV, ASE
+##   NW  (p=0): CV (ell = 0), MCV, ASE
+##   LL  (p=1): CV (ell = 0), MCV, ASE
 
 one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
   
@@ -105,9 +110,9 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
   m_vals <- m_fun(X)                   # true regression values at X
   
   ## Compute standardized distances
-  D <- geodesic_dist(X) / pi
+  D <- geodesic_dist(X)/pi
   
-  Sigma <- sigma2 * exp(-(D* n^{1/d}) / alpha) 
+  Sigma <- sigma2 * exp(-D / alpha)
   
   if (inherits(try(chol(Sigma), silent = TRUE), "try-error")) {
     stop(sprintf(" Sigma is not positive definite for n = %d and alpha = %.3f", 
@@ -124,8 +129,7 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
   for (p in c(0, 1)) {
     tag <- if (p == 0) "nw" else "ll"
     
-    
-    ## --- ASE : true ase over the whole grid (one fit for all h) ---
+    ## --- ASE ---
     mhat <- loc.directional.linear(x = X, data.dir = X, data.lin = Y,
                                    h = h_grid, p = p)$Yhat
     ase_vals <- colMeans((mhat - m_vals)^2)
@@ -136,7 +140,7 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, ell_vals, d = 2) {
     out[paste0(tag, "_h_ase")] <- h_grid[idx_ase]
     out[paste0(tag, "_mse_ase")] <- ase_vals[idx_ase]
     
-    ## --- CV --- (ASE of the selected h read from ase_vals; NA if CV failed)
+    ## --- CV --- 
     h_cv <- mcv(X, Y, h_grid,p, ell = 0, D = D)$h
     out[paste0(tag, "_h_cv")] <- h_cv
     out[paste0(tag, "_mse_cv")] <- ase_vals[match(h_cv, h_grid)]

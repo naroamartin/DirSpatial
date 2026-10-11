@@ -2,24 +2,23 @@
 # Simulation
 ################################################################################
 rm(list = ls())
-source("setupMCV_n.R")
+source("setupMCV.R")
 
 ## ------ Simulation parameters -----------------------------------------------
 MC <- 500
 d <- 2
 n_values <- c(100, 200, 400)
-alpha_vals <- c(0.1, 0.3, 0.6)
+alpha_vals <- c(0.9, 1.8, 2.7)
 sigma2 <- 1
 m_idx_vals <- c(1)
 h_grid <- seq(0.03, 1.0, length.out = 40)
-ell_vals <- c(0.05, 0.1, 0.15, 0.2, 0.25)
-
+ell_vals <- c(0.1, 0.15, 0.2, 0.25)
 cores <- parallel::detectCores() - 3
 
 output_dir <- "sim_workspaces"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
-save_results <- FALSE
+save_results <- TRUE
 
 ## ------ Simulation loop over m  --------------------------------------------
 set.seed(123, kind = "Mersenne-Twister")
