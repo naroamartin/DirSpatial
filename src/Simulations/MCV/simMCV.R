@@ -8,11 +8,11 @@ source("setupMCV.R")
 MC <- 500
 d <- 2
 n_values <- c(100, 200, 400)
-alpha_vals <- c(0.9, 1.8, 2.7)
+alpha_vals <- c(0.1, 0.3, 0.66)
 sigma2 <- 1
 m_idx_vals <- c(1)
 h_grid <- seq(0.03, 1.0, length.out = 40)
-ell_vals <- c(0.1, 0.15, 0.2, 0.25)
+ell_vals <- pi * c(0.1, 0.15, 0.2, 0.25)  # MCV radius in radians
 cores <- parallel::detectCores() - 3
 
 output_dir <- "sim_workspaces"
