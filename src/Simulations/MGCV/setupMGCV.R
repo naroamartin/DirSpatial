@@ -69,45 +69,6 @@ cv <- function(X, Y, h_grid, p, plot = FALSE) {
   return(list(h = h, cv_min = cv_min))
 }
 
-##------ Modified cross-validation (used only to choose the pilot) -----------
-# MCV(h) = (1/n) sum_i [ Y_i - m_hat_{h,p,-N(i)}(X_i) ]^2
-#  N(i) = { j : theta(X_j, X_i) / pi <= ell }
-mcv <- function(X, Y, h_grid, p, ell, D = NULL) {
-  n <- nrow(X)
-  if (is.null(D)) D <- geodesic_dist(X) / pi
-  min_train <- p * (ncol(X) - 1) + 1
-  res <- matrix(NA_real_, nrow = n, ncol = length(h_grid))
-
-  for (i in seq_len(n)) {
-    # N(i) always contains i itself (D[i, i] = 0)
-    idx_train <- which(D[i, ] > ell)
-    if (length(idx_train) < min_train) next
-
-    yhat_i <- loc.directional.linear(x = X[i, , drop = FALSE],
-                                     data.dir = X[idx_train, , drop = FALSE],
-                                     data.lin = Y[idx_train], h = h_grid,
-                                     p = p)$Yhat
-    res[i, ] <- (Y[i] - drop(yhat_i))^2
-  }
-  mcv_error <- colMeans(res)
-  mcv_error[!is.finite(mcv_error)] <- Inf
-
-  if (all(!is.finite(mcv_error))) return(list(h = NA_real_, mcv_min = NA_real_))
-  idx <- which.min(mcv_error)
-  list(h = h_grid[idx], mcv_min = mcv_error[idx])
-}
-
-##------ Data-driven pilot bandwidth ------------------------------------------
-# h_pilot = c_pilot * h_MCV. MCV removes the correlated neighbours, so h_MCV
-# adapts to the curvature of m without collapsing like CV; the factor c_pilot
-# oversmooths so the pilot residuals keep the spatial correlation.
-pilot_bandwidth <- function(X, Y, h_grid, p, D = NULL, ell_pilot = 0.1,
-                            c_pilot = 2) {
-  h_mcv <- mcv(X, Y, h_grid, p, ell = ell_pilot, D = D)$h
-  if (is.na(h_mcv)) return(NA_real_)
-  min(c_pilot * h_mcv, max(h_grid))
-}
-
 mgcv <- function(X, Y, h_grid, p, R = NULL, D = NULL, h_pilot = NULL,
                  J = 20, min_pairs = 5, plot = FALSE) {
   n <- nrow(X)
@@ -162,10 +123,8 @@ dist_est <- function(X, D = NULL, J = 20, plot = FALSE) {
   pairs <- pairs[keep, , drop = FALSE]
   if (!length(dvec)) stop("No positive pairwise distances.")
   
-  # Define the range of distances used for binning. The first bins must reach
-  # small distances: with the n^{1/d} scaling the correlation range is
-  # alpha / n^{1/d} (about 0.02-0.06), below the old lower limit 0.005-quantile
-  d_min <- max(quantile(dvec, 0.0002, names = FALSE), 0.002)
+  # Define the range of distances used for binning
+  d_min <- max(quantile(dvec, 0.005, names = FALSE), 0.005)
   d_max <- quantile(dvec, 0.95, names = FALSE)
   
   # Define logarithmically spaced reference distances
@@ -198,7 +157,7 @@ dist_est <- function(X, D = NULL, J = 20, plot = FALSE) {
     
     # Number of pairs per bin
     plot(d, counts, type = "b", pch = 19, log = "x", xlab = "Bin centre",
-      ylab = "Number of pairs", main = "Pairs per bin")
+         ylab = "Number of pairs", main = "Pairs per bin")
     par(mfrow = c(1, 1))
   }
   
@@ -234,6 +193,7 @@ empirical_variogram <- function(eps, g) {
   
   list(d = g$d, gamma = gamma_val, n = n_pairs)
 }
+
 
 # Estimates spatial correlation matrix R by fitting an exponential variogram via NLS
 correlation_matrix <- function(X, Y, h, p, J = 20, D = NULL, min_pairs = 5) {
@@ -293,24 +253,19 @@ correlation_matrix <- function(X, Y, h, p, J = 20, D = NULL, min_pairs = 5) {
 # Simulation Core Loop
 ################################################################################
 
-# h_pilot = NULL: data-driven pilot (c_pilot * h_MCV with ell_pilot), computed
-# separately for p = 0 and p = 1. A positive number fixes the pilot instead
-# (useful for sensitivity analyses).
-one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot = NULL,
-                    ell_pilot = 0.1, c_pilot = 2, d = 2) {
-
-  if (!is.null(h_pilot) && (!is.numeric(h_pilot) || length(h_pilot) != 1L ||
-                            !is.finite(h_pilot) || h_pilot <= 0)) {
-    stop("h_pilot must be NULL or a single positive number.")
+one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot, d = 2) {
+  
+  X <- unif_sphere(n, d) # (n x 3) points on S^2
+  if (is.null(h_pilot)) h_pilot <- 1.5 * (sd(X))
+  if (!is.numeric(h_pilot) || length(h_pilot) != 1L || !is.finite(h_pilot) ||
+      h_pilot <= 0) {
+    stop("h_pilot must be a single positive number.")
   }
- 
-  X <- unif_sphere(n, d)               # (n x 3) points on S^2
+  
   m_vals <- m_fun(X)                   # true regression values at X
   D <- geodesic_dist(X) / pi
   
-  # Correlation range shrinks as alpha / n^{1/d} (assumption A4), same design
-  # as in setupMCV.R
-  Sigma <- sigma2 * exp(-(D * n^(1/d)) / alpha)
+  Sigma <- sigma2 * exp(-D/ alpha) 
   
   if (inherits(try(chol(Sigma), silent = TRUE), "try-error")) {
     stop(sprintf(" Sigma is not positive definite for n = %d and alpha = %.3f", 
@@ -340,24 +295,15 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot = NULL,
     out[paste0(tag, "_h_cv")] <- h_cv
     out[paste0(tag, "_mse_cv")] <- if (is.na(h_cv)) NA_real_ else
       ase_vals[match(h_cv, h_grid)]
-
+    
     # MGCV
-    h_pil <- if (is.null(h_pilot)) {
-      pilot_bandwidth(X, Y, h_grid, p, D = D, ell_pilot = ell_pilot,
-                      c_pilot = c_pilot)
-    } else h_pilot
-    out[paste0(tag, "_h_pilot")] <- h_pil
-
-    cm <- if (is.na(h_pil)) NULL else tryCatch(
-      correlation_matrix(X, Y, h = h_pil, p = p, J = 20, D = D, min_pairs = 5),
+    cm <- tryCatch(
+      correlation_matrix(X, Y, h = h_pilot, p = p, J = 20, D = D, min_pairs = 5),
       error = function(e) NULL
     )
     
     Rhat <- if (is.null(cm)) NULL else cm$R
-    # The variogram fits exp(-D / a), so a estimates alpha / n^{1/d};
-    # rescale to compare with alpha
-    out[paste0(tag, "_alpha_hat")] <- if (is.null(cm)) NA_real_ else
-      cm$alpha * n^(1/d)
+    out[paste0(tag, "_alpha_hat")] <- if (is.null(cm)) NA_real_ else cm$alpha
     
     if (is.null(Rhat)) {
       out[paste0(tag, "_h_mgcv")]   <- NA_real_
@@ -380,8 +326,7 @@ one_rep <- function(n, alpha, sigma2, m_fun, h_grid, h_pilot = NULL,
 }
 
 run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
-                           h_grid, h_pilot = NULL, ell_pilot = 0.1,
-                           c_pilot = 2, d = 2, cores = 1) {
+                           h_grid, h_pilot, d = 2, cores = 1) {
   
   doFuture::registerDoFuture()
   future::plan(future::multisession(), workers = cores)
@@ -404,22 +349,18 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
         
         reps <- foreach(k = seq_len(MC), .inorder = TRUE,
                         .packages = c("DirStatsOld", "MASS"),
-                        .export = c("one_rep", "cv", "mgcv", "mcv",
-                                    "pilot_bandwidth",
-                                    "correlation_matrix", "dist_est",
+                        .export = c("one_rep", "cv", "mgcv", 
+                                    "correlation_matrix", "dist_est", 
                                     "empirical_variogram", "geodesic_dist",
-                                    "unif_sphere",
-                                    "m_funs", "h_grid", "sigma2",
-                                    "d", "h_pilot", "ell_pilot", "c_pilot",
-                                    "m_idx")) %dorng% {
+                                    "unif_sphere", 
+                                    "m_funs", "h_grid", "sigma2", 
+                                    "d", "h_pilot", "m_idx")) %dorng% {
                                       prog()
-                                      one_rep(n = n, alpha = alpha,
+                                      one_rep(n = n, alpha = alpha, 
                                               sigma2 = sigma2,
                                               m_fun   = m_funs[[m_idx]],
                                               h_grid  = h_grid,
-                                              h_pilot = h_pilot,
-                                              ell_pilot = ell_pilot,
-                                              c_pilot = c_pilot, d = d)
+                                              d = d, h_pilot = h_pilot)
                                     }
       })
       
@@ -431,53 +372,49 @@ run_simulation <- function(MC, n_values, alpha_vals, sigma2, m_idx,
         n = n,
         alpha = alpha,
         h_pilot = h_pilot,
-        ell_pilot = ell_pilot,
-        c_pilot = c_pilot,
         mat = mat,
         samples = samples,
-         
+        
         mean_mse_nw_cv = mean(mat[, "nw_mse_cv"], na.rm = TRUE),
         mean_mse_nw_mgcv = mean(mat[, "nw_mse_mgcv"], na.rm = TRUE),
         mean_mse_nw_ase = mean(mat[, "nw_mse_ase"], na.rm = TRUE),
         mean_mse_ll_cv  = mean(mat[, "ll_mse_cv"], na.rm = TRUE),
         mean_mse_ll_mgcv = mean(mat[, "ll_mse_mgcv"], na.rm = TRUE),
         mean_mse_ll_ase = mean(mat[, "ll_mse_ase"], na.rm = TRUE),
-         
+        
         median_mse_nw_cv  = median(mat[, "nw_mse_cv"], na.rm = TRUE),
         median_mse_nw_mgcv  = median(mat[, "nw_mse_mgcv"], na.rm = TRUE),
         median_mse_nw_ase = median(mat[, "nw_mse_ase"], na.rm = TRUE),
         median_mse_ll_cv  = median(mat[, "ll_mse_cv"], na.rm = TRUE),
         median_mse_ll_mgcv  = median(mat[, "ll_mse_mgcv"], na.rm = TRUE),
         median_mse_ll_ase = median(mat[, "ll_mse_ase"], na.rm = TRUE),
-         
+        
         sd_mse_nw_cv = sd(mat[, "nw_mse_cv"], na.rm = TRUE),
         sd_mse_nw_mgcv = sd(mat[, "nw_mse_mgcv"], na.rm = TRUE),
         sd_mse_nw_ase = sd(mat[, "nw_mse_ase"], na.rm = TRUE),
         sd_mse_ll_cv = sd(mat[, "ll_mse_cv"], na.rm = TRUE),
         sd_mse_ll_mgcv = sd(mat[, "ll_mse_mgcv"], na.rm = TRUE),
         sd_mse_ll_ase = sd(mat[, "ll_mse_ase"], na.rm = TRUE),
-                               
+        
         mean_h_nw_cv = mean(mat[, "nw_h_cv"], na.rm = TRUE),
         mean_h_nw_mgcv = mean(mat[, "nw_h_mgcv"], na.rm = TRUE),
         mean_h_nw_ase = mean(mat[, "nw_h_ase"], na.rm = TRUE),
         mean_h_ll_cv = mean(mat[, "ll_h_cv"], na.rm = TRUE),
         mean_h_ll_mgcv = mean(mat[, "ll_h_mgcv"], na.rm = TRUE),
         mean_h_ll_ase = mean(mat[, "ll_h_ase"], na.rm = TRUE),
-         
+        
         median_h_nw_cv = median(mat[, "nw_h_cv"], na.rm = TRUE),
         median_h_nw_mgcv = median(mat[, "nw_h_mgcv"], na.rm = TRUE),
         median_h_nw_ase = median(mat[, "nw_h_ase"], na.rm = TRUE),
         median_h_ll_cv = median(mat[, "ll_h_cv"], na.rm = TRUE),
         median_h_ll_mgcv = median(mat[, "ll_h_mgcv"], na.rm = TRUE),
         median_h_ll_ase = median(mat[, "ll_h_ase"], na.rm = TRUE),
-                               
-    
+        
+        
         n_fail_nw_mgcv = sum(is.na(mat[, "nw_mse_mgcv"])),
         n_fail_ll_mgcv = sum(is.na(mat[, "ll_mse_mgcv"])),
         med_alpha_hat_nw = median(mat[, "nw_alpha_hat"], na.rm = TRUE),
-        med_alpha_hat_ll = median(mat[, "ll_alpha_hat"], na.rm = TRUE),
-        med_h_pilot_nw = median(mat[, "nw_h_pilot"], na.rm = TRUE),
-        med_h_pilot_ll = median(mat[, "ll_h_pilot"], na.rm = TRUE)
+        med_alpha_hat_ll = median(mat[, "ll_alpha_hat"], na.rm = TRUE)
       )
     }
   }
@@ -497,14 +434,14 @@ make_table <- function(results, med = FALSE, print_h = TRUE) {
   for (r in results) {
     
     row <- data.frame(alpha = r$alpha, n = r$n,
-      NW_CV = fmt(r[[paste0(stat, "_mse_nw_cv")]], r$sd_mse_nw_cv),
-      NW_MGCV = fmt(r[[paste0(stat, "_mse_nw_mgcv")]], r$sd_mse_nw_mgcv),
-      NW_ASE = fmt(r[[paste0(stat, "_mse_nw_ase")]], r$sd_mse_nw_ase),
-      
-      LL_CV = fmt(r[[paste0(stat, "_mse_ll_cv")]], r$sd_mse_ll_cv),
-      LL_MGCV = fmt(r[[paste0(stat, "_mse_ll_mgcv")]], r$sd_mse_ll_mgcv),
-      LL_ASE = fmt(r[[paste0(stat, "_mse_ll_ase")]], r$sd_mse_ll_ase),
-      stringsAsFactors = FALSE)
+                      NW_CV = fmt(r[[paste0(stat, "_mse_nw_cv")]], r$sd_mse_nw_cv),
+                      NW_MGCV = fmt(r[[paste0(stat, "_mse_nw_mgcv")]], r$sd_mse_nw_mgcv),
+                      NW_ASE = fmt(r[[paste0(stat, "_mse_nw_ase")]], r$sd_mse_nw_ase),
+                      
+                      LL_CV = fmt(r[[paste0(stat, "_mse_ll_cv")]], r$sd_mse_ll_cv),
+                      LL_MGCV = fmt(r[[paste0(stat, "_mse_ll_mgcv")]], r$sd_mse_ll_mgcv),
+                      LL_ASE = fmt(r[[paste0(stat, "_mse_ll_ase")]], r$sd_mse_ll_ase),
+                      stringsAsFactors = FALSE)
     
     if (print_h) {
       
@@ -524,7 +461,7 @@ make_table <- function(results, med = FALSE, print_h = TRUE) {
   # Error / ASE columns
   nw_mse <- c("NW_CV", "NW_MGCV", "NW_ASE")
   ll_mse <- c( "LL_CV","LL_MGCV","LL_ASE")
-
+  
   if (print_h) {
     nw_h <- c("NW_h_CV", "NW_h_MGCV","NW_h_ASE")
     ll_h <- c("LL_h_CV","LL_h_MGCV","LL_h_ASE" )
@@ -546,9 +483,7 @@ alpha_table <- function(results) {
   tab <- do.call(rbind, lapply(results, function(r)
     data.frame(alpha = r$alpha, n = r$n,
                alpha_hat_NW = round(r$med_alpha_hat_nw, 3),
-               alpha_hat_LL = round(r$med_alpha_hat_ll, 3),
-               h_pilot_NW = round(r$med_h_pilot_nw, 3),
-               h_pilot_LL = round(r$med_h_pilot_ll, 3))))
+               alpha_hat_LL = round(r$med_alpha_hat_ll, 3))))
   rownames(tab) <- NULL
   tab[order(tab$alpha, tab$n), ]
 }
